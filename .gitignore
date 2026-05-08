@@ -12,7 +12,7 @@ bulk/troubleshooting/*.ipynb
 # Simulation outputs
 bulk/output_dir/
 bulk/job_output/
-
+bulk/troubleshooting/
 # Common large simulation/data files anywhere
 *.gsd
 *.log

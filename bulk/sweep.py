@@ -1,17 +1,17 @@
 #!/usr/bin/env python
-#SBATCH --job-name=48b_48a
+#SBATCH --job-name=50a
 #SBATCH --output=job_output/job_output2_%A_%a.txt
 #SBATCH --error=job_output/job_error2_%A_%a.txt
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=16G
 #SBATCH --qos=long
-#SBATCH --time=10:00:00
-#SBATCH --partition=gpu
+#SBATCH --time=12:00:00
+#SBATCH --partition=g
 #SBATCH --gres=gpu:1
-#SBATCH --array=12-23
+#SBATCH --constraint=g4
+#SBATCH --array=0-35
 
-## SBATCH --constraint=g4
 
 import argparse
 import os

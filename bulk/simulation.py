@@ -35,10 +35,10 @@ class RuntimeClock(Action):
 def initialize_model(par):
 
     nlist = hoomd.md.nlist.Tree(
-        buffer=par.buffer, default_r_cut=2.0, exclusions=("bond", "1-3", "1-4")
+        buffer=par.buffer, default_r_cut=par.nlist_rcut, exclusions=("bond", "1-3", "1-4")
     )
 
-    sqd = sqd_potential.SquareDensity(nlist, default_r_cut=2.0)
+    sqd = sqd_potential.SquareDensity(nlist, default_r_cut=par.nlist_rcut)
 
     # SQD potential version pick
     if par.sqd_version == 1:
@@ -294,9 +294,9 @@ def setup_integrator(par, forces):
     return integrator
 
 
-def setup_simulation(snapshot=None, restart_from=None, restart_frame=-1):
+def setup_simulation(snapshot=None, restart_from=None, restart_frame=-1, seed = 4):
 
-    sim = hoomd.Simulation(device=hoomd.device.GPU(), seed=4)
+    sim = hoomd.Simulation(device=hoomd.device.GPU(), seed=seed)
     if restart_from is not None:
         sim.create_state_from_gsd(filename=str(restart_from), frame=restart_frame)
         print(
@@ -313,7 +313,7 @@ def setup_simulation(snapshot=None, restart_from=None, restart_frame=-1):
 
 def add_logger(sim, par, force_objs):
     logger = hoomd.logging.Logger(categories=["scalar"])
-    logger.add(sim, quantities=["timestep"])
+    logger.add(sim, quantities=["timestep", "tps"])
 
     runtime_clock = RuntimeClock()
     logger.add(runtime_clock, quantities=["walltime"])
@@ -330,7 +330,7 @@ def add_logger(sim, par, force_objs):
     )
     # No energy logging if log_energies = True
     if not par.log_energies:
-        print("Logger created (timestep, walltime).")
+        print("Logger created.")
         return logger, thermo
     
     # Energy logging if log_energies = True

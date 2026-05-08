@@ -18,8 +18,8 @@ def get_params():
         "--dpd_r_cut", type=float, default=2, help="Distance cutoff for DPD"
     )
     # Logging of potential energies
-    parser.add_argument("--log-energies", action="store_true",
-                    help="Log per-force energy terms (default: only timestep + walltime).")
+    parser.add_argument("--log_energies", action="store_false",
+                    help="Log per-force energy terms (default: only timestep + tps + walltime).")
     # Input files
     parser.add_argument("--param_file", type=str, help="Path to a .txt file")
     parser.add_argument(
@@ -71,7 +71,7 @@ def get_params():
         "--gamma", type=float, default=0.1, help="Friction factor"
     )  # 0.1
     parser.add_argument(
-        "--dry_run", type=bool, action="store_true", help="Whether to actually run."
+        "--dry_run", action="store_true", help="Whether to actually run."
     )
     
     parser.add_argument(
@@ -80,13 +80,29 @@ def get_params():
         default="sticker_spacer",
         help="Model architecture, see setup.py",
     )
-
+    parser.add_argument(
+    "--nlist_rcut",
+    type=float,
+    default=0.807,
+    help=
+        "Neighbor-list and SQD pair-search cutoff, set to density_upper_rcut_base",)
+    
     parser.add_argument(
         "--buffer",
         type=float,
         default=0.3,
         help="Neighbor-list buffer distance added beyond the interaction cutoff; larger values reduce rebuild frequency but increase neighbor-list size.",
     )
+    # Seed for reproduciblity
+    parser.add_argument(
+    "--seed",
+    type=int,
+    default=None,
+    help=(
+        "Master random seed. If None, a random seed is generated automatically "
+        "and saved. Used to derive initialization and HOOMD seeds."
+    ),)
+
     # Run sim from state
     parser.add_argument(
         "--restart_from",
@@ -135,10 +151,6 @@ def get_params():
     parser.add_argument("--r_att_base", type=float, default=0.75)
     parser.add_argument("--r_d_base", type=float, default=1)
 
-    # Interaction distance cutoffs for WC non directional interactions e.g. U1-A1
-    # parser.add_argument('--r_rep_wc_nondir', type=float, default=0.1)
-    # parser.add_argument('--r_att_wc_nondir', type=float, default=1)
-
     ## Valency and contact params
     valency_low = 1.03
     valency_high = 1.061
@@ -147,16 +159,12 @@ def get_params():
         "--ncut_ij_comp", type=float, default=valency_low, help="valency of WC"
     )
 
-    # parser.add_argument('--ncut_ij_high', type=float, default=valency_high, help="valency of higher cutoff radii")
-    # parser.add_argument('--ncut_ji_comp', type=int, default=valency) # TO DO: remove?
-
     parser.add_argument("--ncut_ij_nonwc", type=float, default=valency_high)
     # parser.add_argument('--ncut_ji_nonwc', type=int, default=valency)
 
     parser.add_argument(
         "--ncut_ij_back", type=float, default=12
     )  # 12 arrives from the way spheres can pack
-    # parser.add_argument('--ncut_ji_back', type=int, default=12)
 
     parser.add_argument(
         "--ncut_ij_wc_nondir",
@@ -165,7 +173,7 @@ def get_params():
         help="Cutoff for non-directional WC e.g. A1-U2, avoids valency being satisfied",
     )
 
-    ## Bond and angle params
+    # Bond and angle params
     parser.add_argument(
         "--bond_length", type=float, default=1
     )  # equilibrium bond length
@@ -262,7 +270,6 @@ def derived_params(
 ):  # to do: see where this is used and if a function call is necessary
     # Derived parameters (not passed via CLI)
     derived = dict()
-    # derived["delta_E_nonwc"] = (args.E_att_nonwc_max - args.E_att_nonwc_min) / args.N_updates
     derived["E_att_nonwc"] = -args.E_att_nonwc_min * args.beta
     derived["E_att_comp"] = -args.E_att * args.beta  # Attractive scale
     derived["E_rep_scaled"] = args.E_rep * args.beta  # scale repulsion by beta

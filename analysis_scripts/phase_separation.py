@@ -329,8 +329,6 @@ def mono_oligo_drop_dict(cluster_counts: Counter) -> dict:
     return mono_oligo_drop
 
 
-
-
 # ============================================================================
 # Persistent clusters analysis
 # ============================================================================

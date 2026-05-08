@@ -1,10 +1,8 @@
 import math 
-import random 
 import gsd.hoomd
 import numpy as np
 import json
 import argparse
-import hoomd
 
 # Counts how many times define_pairwise_sqd was called, used to print parameters only once
 _sqd_init_count = 0
@@ -700,51 +698,64 @@ def define_pairwise_sqd_sticker_spacer(sqd, par):
 
 ##### Box creation and random vector initialization
 
-def random_unit_vector_3D():
+def random_unit_vector_3D(rng):
     """
-    Generate a random unit vector (x,y,z) in 3D by sampling
-    angles uniformly on the sphere.
+    Generate a random unit vector in 3D by sampling angles uniformly on the sphere.
     """
-    theta = 2.0 * math.pi * random.random()   # 0 to 2π
-    phi = math.acos(2.0 * random.random() - 1.0)  # 0 to π
+    theta = 2.0 * math.pi * rng.random()
+    phi = math.acos(2.0 * rng.random() - 1.0)
+
     x = math.sin(phi) * math.cos(theta)
     y = math.sin(phi) * math.sin(theta)
     z = math.cos(phi)
+
     return (x, y, z)
 
-def random_walk_positions_3D(N, step_size, box_size, start_pos=(0,0,0), max_tries=100000):
+def random_walk_positions_3D(
+    N,
+    step_size,
+    box_size,
+    rng,
+    start_pos=(0, 0, 0),
+    max_tries=100000,
+):
     """
-    Place N monomers in 3D via a random walk inside a cubic box [0, box_size]^3.
-    First monomer is placed at the box center.
+    Place N monomers in 3D via a random walk inside a cubic box centered at the origin.
+    First monomer is placed at start_pos.
     Each subsequent monomer is step_size away in a random direction,
-    re-rolling if we exit the box boundaries.
+    re-rolling if it exits the box boundaries.
     """
-    # Start in the center of the box
-    box_size  = box_size * 0.5
+    half_box_size = box_size * 0.5
 
     positions = [start_pos]
 
     for i in range(1, N):
         success = False
         tries = 0
+
         while not success and tries < max_tries:
             tries += 1
-            ux, uy, uz = random_unit_vector_3D()
+
+            ux, uy, uz = random_unit_vector_3D(rng)
             oldx, oldy, oldz = positions[i - 1]
+
             newx = oldx + step_size * ux
             newy = oldy + step_size * uy
             newz = oldz + step_size * uz
 
-            # Check if inside the box
-            if (-box_size <= newx <= box_size and
-                -box_size <= newy <= box_size and
-                -box_size <= newz <= box_size):
-                # Accept
+            if (
+                -half_box_size <= newx <= half_box_size
+                and -half_box_size <= newy <= half_box_size
+                and -half_box_size <= newz <= half_box_size
+            ):
                 positions.append((newx, newy, newz))
                 success = True
 
         if not success:
-            raise RuntimeError("Failed to place all monomers inside the box. Try increasing box_size or max_tries.")
+            raise RuntimeError(
+                "Failed to place all monomers inside the box. "
+                "Try increasing box_size or max_tries."
+            )
 
     return np.array(positions)
 
@@ -787,13 +798,16 @@ def snapshot_ts7(par):
     dihedral_typeid = []
 
     offset = 0
+    rng = np.random.default_rng(par.seed)
     for mol_idx, sequence in enumerate(sequences):
         N = len(sequence)
         typeids.extend([par.type_names.index(x) for x in sequence])
 
         # Assign a center offset for this molecule to avoid overlaps
-        center_offset = [random.uniform(-box_size/2, box_size/2) for _ in range(3)]
-        pos = random_walk_positions_3D(N, par.bond_length, box_size, start_pos=center_offset)
+        center_offset = rng.uniform(-box_size / 2, box_size / 2, size=3)
+        pos = random_walk_positions_3D(
+            N=N, step_size=par.bond_length, box_size=box_size,rng=rng, start_pos=center_offset
+        )
         positions.extend(pos)
         velocities.extend([[0.0, 0.0, 0.0]] * N)
 
@@ -986,14 +1000,16 @@ def snapshot_2_particles(par: argparse.Namespace) -> gsd.hoomd.Frame:
 
 
     offset = 0
-
+    rng = np.random.default_rng(par.seed)
     for sequence in sequences:
         N = len(sequence)
         typeids.extend(type_to_id[x] for x in sequence)
 
         # Assign a center offset for this molecule to avoid overlaps
-        center_offset = [random.uniform(-box_size/2, box_size/2) for _ in range(3)]
-        pos = random_walk_positions_3D(N, par.bond_length, box_size, start_pos=center_offset)
+        center_offset = rng.uniform(-box_size / 2, box_size / 2, size=3)
+        pos = random_walk_positions_3D(
+            N=N, step_size=par.bond_length, box_size=box_size,rng=rng, start_pos=center_offset
+        )
         positions.extend(pos)
         velocities.extend([[0.0, 0.0, 0.0]] * N)
 
@@ -1131,15 +1147,15 @@ def snapshot_sticker_spacer(par):
     angle_typeid = []
 
     offset = 0
+    rng = np.random.default_rng(par.seed)
 
     for sequence in sequences:
         N = len(sequence)
         typeids.extend(type_to_id[x] for x in sequence)
 
-        center_offset = [
-            random.uniform(-box_size / 2, box_size / 2) for _ in range(3)]
+        center_offset = rng.uniform(-box_size / 2, box_size / 2, size=3)
         pos = random_walk_positions_3D(
-            N, par.bond_length, box_size, start_pos=center_offset
+            N=N, step_size=par.bond_length, box_size=box_size,rng=rng, start_pos=center_offset
         )
         positions.extend(pos)
         velocities.extend([[0.0, 0.0, 0.0]] * N)
@@ -1186,56 +1202,3 @@ def snapshot_sticker_spacer(par):
         f"Total particles: {total_particles}, bonds: {len(bonds)}, angles: {len(angles)}")
 
     return snapshot
-
-
-# def define_pairwise_sqd_v3(sqd, par):
-#     """Simplified 2-bead per-nucleotide model. Contains wc/nonwc interaction, ppp/ppb angles and stacking dihedral.
-#     Called in simulation.py in initialize model if sqd_version == 3.
-#     """
-#     print("define_pairwise_sqd_v3 called")
-
-#     complements = par.complements  # WC
-#     non_wc = par.non_wc_complements  # nonwc
-
-#     for i, t1 in enumerate(par.type_names):
-#         for t2 in par.type_names[i:]:
-#             # WC interaction
-#             if complements.get(t1) == t2:
-#                 sqd.params[(t1, t2)] = dict(
-#                     A=par.E_rep_wc_scaled,
-#                     B=par.E_att_comp,               # negative scaled
-#                     attr_rcut=par.r_att_base,
-#                     rep_rcut=par.r_rep_base,
-#                     density_upper_rcut=par.density_upper_rcut_base,  # 0.807
-#                     density_lower_rcut=par.density_lower_rcut_base,  # 0.48
-#                     ncut_ij=par.ncut_ij_comp,
-#                     ncut_ji=par.ncut_ij_comp,
-#                 )
-#                 print(
-#                     f"[WC_dir] {t1}-{t2}: A={par.E_rep_wc_scaled}, B={par.E_att_comp}, ncut={par.ncut_ij_comp}")
-
-#             # non-WC interaction
-#             elif (t2 in non_wc.get(t1, [])) or (t1 in non_wc.get(t2, [])):
-#                 sqd.params[(t1, t2)] = dict(
-#                     A=par.E_rep_wc_scaled,
-#                     B=par.E_att_nonwc,
-#                     attr_rcut=par.r_att_base,
-#                     rep_rcut=par.r_rep_base,
-#                     density_upper_rcut=par.density_upper_rcut_base,
-#                     density_lower_rcut=par.density_lower_rcut_base,
-#                     ncut_ij=par.ncut_ij_nonwc,  # 1
-#                     ncut_ji=par.ncut_ij_nonwc,  # 1
-#                     )
-#                 print(
-#                     f"[nonWC_dir] {t1}-{t2}: A={par.E_rep_wc_scaled}, B={par.E_att_nonwc}, ncut={par.ncut_ij_nonwc}")
-#             else:
-#                 sqd.params[(t1, t2)] = dict(
-#                     A=par.E_rep_wc_scaled,
-#                     B=0.0,
-#                     attr_rcut=par.r_att_base,
-#                     rep_rcut=par.r_rep_base,
-#                     density_upper_rcut=par.density_upper_rcut_base,
-#                     density_lower_rcut=par.density_lower_rcut_base,
-#                     ncut_ij=12,
-#                     ncut_ji=12,
-#                     )

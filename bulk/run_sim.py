@@ -1,14 +1,13 @@
 import hoomd
-from hoomd.sqd_plugin import sqd_potential
 import time
 import os
 import sys
 import json
-from pprint import pprint
 from pathlib import Path
 from params import *
 from setup import *
 from simulation import *
+import secrets
 
 base_dir = Path(__file__).resolve().parent
 os.chdir(base_dir)
@@ -30,6 +29,10 @@ if not mol_file.is_absolute():
 par.sequences = parse_molecules(file=mol_file) # new fparameter added based on molecules.json
 par.__dict__.update(base_info())
 par.__dict__.update(derived_params(par))
+
+# Set seed
+if par.seed is None:
+    par.seed = secrets.randbelow(65535) + 1
 
 # Different pairing dictionaries for different models
 if par.structure_type == "2_particles":
@@ -54,7 +57,7 @@ if par.restart_from is not None:
     restart_path=Path(par.restart_from)
     if not restart_path.exists():
         raise FileNotFoundError(f"Restart file not found: {restart_path}")
-    sim = setup_simulation(restart_from=par.restart_from, restart_frame=par.restart_frame)
+    sim = setup_simulation(restart_from=par.restart_from, restart_frame=par.restart_frame, seed =par.seed)
 else:
     if par.structure_type in['troubleshoot7', 'troubleshoot8']:
         snapshot = snapshot_ts7(par)
@@ -64,7 +67,7 @@ else:
         snapshot = snapshot_sticker_spacer(par)
     else:
         raise ValueError("Invalid structure_type.")
-    sim = setup_simulation(snapshot)
+    sim = setup_simulation(snapshot=snapshot, seed = par.seed)
 
 #snapshot = snapshot_multiple_rnas(par)
 forces, force_objs = initialize_model(par)
