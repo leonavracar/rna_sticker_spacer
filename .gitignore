@@ -1,0 +1,38 @@
+# Python cache
+__pycache__/
+*/__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter notebooks and checkpoints
+bulk/troubleshooting/*.ipynb
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# Simulation outputs
+bulk/output_dir/
+bulk/job_output/
+
+# Common large simulation/data files anywhere
+*.gsd
+*.log
+*.sqlite
+*.h5
+*.hdf5
+*.npy
+*.npz
+*.traj
+*.dat
+*.lammpstrj
+*.dcd
+*.xtc
+
+
+# Environment / local config
+.env
+.venv/
+venv/
+conda-env/
+
+# System files
+.DS_Store
