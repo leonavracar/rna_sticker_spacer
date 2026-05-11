@@ -115,9 +115,11 @@ def main() -> None:
         traj_stem = npz_path.stem.removesuffix("_pairing")
         traj_path = run_dir / f"{traj_stem}.gsd"
 
-        with as_traj(traj_path) as traj:
-            row.update(get_log_KE_stats(traj, fraction_last=args.ke_fraction_last))
-        
+        try:
+            with as_traj(traj_path) as traj:
+                row.update(get_log_KE_stats(traj, fraction_last=args.ke_fraction_last))
+        except Exception as exc:
+            print(f"Skipping KE stats for {traj_path}: {exc}")
         # Turn npz into one row per frame
         frame_rows = framewise_ps_rows_from_nlist_dict(
             nlist_dict=data,

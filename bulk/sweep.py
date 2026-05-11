@@ -6,11 +6,12 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=16G
 #SBATCH --qos=long
-#SBATCH --time=12:00:00
+#SBATCH --time=10:00:00
 #SBATCH --partition=g
 #SBATCH --gres=gpu:1
 #SBATCH --constraint=g4
 #SBATCH --array=0-35
+
 
 
 import argparse
