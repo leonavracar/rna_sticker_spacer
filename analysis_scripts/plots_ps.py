@@ -7,6 +7,7 @@ from typing import Sequence
 import pandas as pd
 import numpy as np
 import math
+import os
 # ============================================================================
 # Preparing framewise.csv for plotting
 # ============================================================================
@@ -34,6 +35,37 @@ def setup_validation_paths(sweep_dir_name: str) -> dict[str, Path]:
         "parameters_txt": sweep_dir / "parameters.txt",
         "analysis_per_replicate_csv": sweep_dir / "analysis_per_replicate.csv",
     }
+
+def setup_npz_mp_paths(sweep_dir:str, run_dir_num:str, rep_num:int = 0) -> dict[str, Path]:
+    """
+    Create standard paths for loading pairing data (stored as npz with frame_indices, qi_{frame}, pi{frame}, distances, error_rates), 
+    molecule lookup table mapping the molecule ID to particle indices and the respective trajectory.
+    Inputs are sweep directory name (e.g. 41a_sweepx), number of the run_dir and number of replicate if present.
+    """
+    validation_dir = Path("/groups/goloborodko/projects/leona/validation")
+    bulk_dir = validation_dir / "bulk"
+    output_dir = bulk_dir / "output_dir"
+    sweep_dir = output_dir / sweep_dir
+
+    npz_mp_paths={}
+
+    sys.path.extend([
+        str(bulk_dir),
+        str(validation_dir),
+    ])
+    
+    for run_dir in sweep_dir.iterdir():
+        if os.path.isdir(run_dir):
+            if run_dir.name.startswith(f"{run_dir_num}_"):
+                npz_mp_paths["run_dir"] = run_dir
+                break
+
+    
+    npz_mp_paths["sweep_dir"] = sweep_dir
+    npz_mp_paths["ml"] = f"{run_dir}/computed_metrics/pairing/molecule_lookup.npy"
+    npz_mp_paths[f"traj_{rep_num}_npz"] = f"{run_dir}/computed_metrics/pairing/trajectory_{rep_num}_pairing.npz"
+    npz_mp_paths["traj"] = f"{run_dir}/trajectory_{rep_num}.gsd"
+    return npz_mp_paths
 
 
 

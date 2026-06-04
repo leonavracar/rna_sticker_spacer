@@ -112,6 +112,14 @@ def main() -> None:
         data = load_npz(npz_path)
         molecule_id = np.load(mol_id_path)
 
+        # Logs
+        print(f"\nAnalyzing: {npz_path}")
+        for key in ["r_opt", "contact_width"]:
+            if key in data:
+                row[key] = np.asarray(data[key]).item()
+            else:
+                print(f"{key}: not found")
+        
         n_molecules = int(molecule_id[-1]) + 1
         length = len(molecule_id) // n_molecules # ASSUMES EQUAL LENGTH OF MOLECULES
         N_particles = len(molecule_id)

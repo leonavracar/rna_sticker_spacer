@@ -11,13 +11,15 @@ import plotly.graph_objects as go
 from scipy.signal import find_peaks
 from collections import deque
 from collections.abc import Iterable
+import os
+
 # ============================================================================
 # PAIRING ANALYSIS: Single nucleotide model
 # ============================================================================
 
 
 def get_nlist(
-    frame: gsd.hoomd.Frame, r_att: float = 0.75
+    frame: gsd.hoomd.Frame, r_max: float = 0.75
 ) -> freud.locality.NeighborList:
     """Queries the neighbor list for a given frame using a cutoff radius."""
     aq = freud.locality.AABBQuery(
@@ -25,7 +27,7 @@ def get_nlist(
     )
     # exclude_ii=True removes self-interactions (particle i with particle i)
     query_result = aq.query(
-        frame.particles.position, dict(r_max=r_att, exclude_ii=True)
+        frame.particles.position, dict(r_max=r_max, exclude_ii=True)
     )
     return query_result.toNeighborList()
 
@@ -143,30 +145,61 @@ def neighbor_exclusion_mask(
     return ~n_exc_mask
 
 
-def valency_mask(
-    qi: np.ndarray, pi: np.ndarray, distances: np.ndarray, r_opt: float = 0.5
-) -> np.ndarray:
-    """Mask to filter out particles with multiple possible bonded partners.
-    Only the partner closest to r_opt is kept.
-    """
+# def valency_mask(
+#     qi: np.ndarray, pi: np.ndarray, distances: np.ndarray, r_opt: float = 0.5
+# ) -> np.ndarray:
+#     """Mask to filter out particles with multiple possible bonded partners.
+#     Only the partner closest to r_opt is kept.
+#     """
+#     scores = np.abs(distances - r_opt)
+#     order = np.argsort(scores)  # best score (closest to r_opt) first
+#     bonded = set()
+#     keep = np.zeros(len(qi), dtype=bool)
+
+#     for idx in order:
+#         i, j = qi[idx], pi[idx]
+#         if i not in bonded and j not in bonded:
+#             keep[idx] = True
+#             bonded.add(i)
+#             bonded.add(j)
+
+#     return keep
+
+def valency_mask(qi, pi, distances, r_opt=0.5):
+    """Mutual best-partner matching: keep pair iff each endpoint's
+    closest-to-r_opt candidate is the other endpoint."""
+    if len(qi) == 0:
+        return np.zeros(0, dtype=bool)
+
     scores = np.abs(distances - r_opt)
-    order = np.argsort(scores)  # best score (closest to r_opt) first
-    bonded = set()
-    keep = np.zeros(len(qi), dtype=bool)
+    idx_arr = np.arange(len(qi))
 
-    for idx in order:
-        i, j = qi[idx], pi[idx]
-        if i not in bonded and j not in bonded:
-            keep[idx] = True
-            bonded.add(i)
-            bonded.add(j)
+    # Stack: each pair contributes two (particle, score, pair_idx) rows
+    parts  = np.concatenate([qi, pi])
+    scs    = np.concatenate([scores, scores])
+    pidx   = np.concatenate([idx_arr, idx_arr])
 
+    # Sort by particle, then by score ascending (first row per particle is its best)
+    order = np.lexsort((scs, parts))
+    parts_s, scs_s, pidx_s = parts[order], scs[order], pidx[order]
+
+    # First occurrence of each particle = its best pair
+    first = np.empty_like(parts_s, dtype=bool)
+    first[0] = True
+    first[1:] = parts_s[1:] != parts_s[:-1]
+
+    n_particles = int(parts.max()) + 1
+    best_pair_idx = np.full(n_particles, -1, dtype=np.int64)
+    best_pair_idx[parts_s[first]] = pidx_s[first]
+
+    keep = (best_pair_idx[qi] == idx_arr) & (best_pair_idx[pi] == idx_arr)
     return keep
 
 
 def get_filtered_nlist_base_pairs(
     frame: gsd.hoomd.Frame,
-    r_att: float = 0.75,
+    r_min: float | None = 0.42, # stricter lower boundary for deciding pairs
+    r_max: float | None = 0.58, # stricter upper boundary for deciding pairs
     exclude_chain: int = 3,
     r_opt: float = 0.5,
 ) -> freud.locality.NeighborList:
@@ -187,7 +220,7 @@ def get_filtered_nlist_base_pairs(
     -------
     freud.locality.NeighborList: Filtered neighbor list containing only valid base pairing bonds.
     """
-    nlist = get_nlist(frame=frame, r_att=r_att)  # make nlist
+    nlist = get_nlist(frame=frame, r_max=r_max)  # make nlist
     molecule_lookup_table = make_molecule_lookup_table(frame=frame)
     uniq_mask = unique_mask(nlist=nlist)
 
@@ -200,8 +233,16 @@ def get_filtered_nlist_base_pairs(
         molecule_lookup_table=molecule_lookup_table,
         exclude_chain=exclude_chain,
     )
+    # Distance filtering with r_max and r_min
+    dist_mask = np.ones(len(nlist.distances), dtype=bool)
 
-    mask_all = uniq_mask & comp_mask & n_exc_mask
+    if r_min is not None:
+        dist_mask &= nlist.distances >= r_min
+
+    if r_max is not None:
+        dist_mask &= nlist.distances <= r_max
+    
+    mask_all = uniq_mask & comp_mask & n_exc_mask & dist_mask
     nlist.filter(mask_all)
     
     # error rate (particles bonded to >1 partner)
@@ -220,7 +261,8 @@ def get_filtered_nlist_base_pairs(
 
 def compute_filtered_nlist_base_pairs_traj(
     traj: gsd.hoomd.HOOMDTrajectory,
-    r_att: float = 0.75,
+    r_min: float | None = 0.42, # stricter lower boundary for deciding pairs
+    r_max: float | None = 0.58, # stricter upper boundary for deciding pairs
     exclude_chain: int = 3,
     stride: int = 1,
     r_opt: float = 0.5,
@@ -241,7 +283,8 @@ def compute_filtered_nlist_base_pairs_traj(
         frame = traj[frame_idx]
         nlist_filt, error_rate = get_filtered_nlist_base_pairs(
             frame=frame,
-            r_att=r_att,
+            r_min=r_min,
+            r_max=r_max,
             exclude_chain=exclude_chain,
             r_opt=r_opt,
         )
@@ -255,7 +298,18 @@ def compute_filtered_nlist_base_pairs_traj(
 
     return nlist_dict
 
+def transform_and_filter_counter_to_dict(molecule_edges_counter: Counter, min_contacts: int = 1) -> dict:
+    """
+    Filters a molecule contact counter by removing pairs with < min_contacts and transforms counter to a dict.
+    *to be used on a single frame Counter
+    """
+    edge_dict = {}
 
+    for pair, count in molecule_edges_counter.items():
+        if count >= min_contacts:
+            edge_dict[(int(pair[0]), int(pair[1]))] = count
+
+    return edge_dict
 
 # ============================================================================
 # Mono/Oligo/Droplet-mer analysis

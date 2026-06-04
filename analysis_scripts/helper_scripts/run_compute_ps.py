@@ -12,8 +12,7 @@ from pathlib import Path
 import sys
 import argparse
 import numpy as np
-import freud
-import networkx as nx  # do we need it here?
+
 
 analysis_functions_dir = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(analysis_functions_dir))
@@ -55,7 +54,12 @@ def main() -> None:
         default=3,
         help="How many consecutive base indexes are excluded from pairing? e.g. 3 -> 1-2, 1-3, 1-4 excluded",
     )
-
+    parser.add_argument(
+        "--contact_width",
+        type=float,
+        default=0.08,
+        help="Range for filtering out base-base contacts. r_max = r_opt + width and r_min = r_opt - width",
+)
     parser.add_argument(
     "--run_ids",
     nargs="+",
@@ -105,7 +109,10 @@ def main() -> None:
             params_path=run_dir / "params.json", key="r_rep_base"
         )  # get rep radius
         r_opt = (r_att + r_rep) / 2
-        print(f"Processing {traj_path}. Cutoff radius = {r_att}, r_opt = {r_opt}")
+        # Analysis contact window
+        r_min = r_opt - args.contact_width
+        r_max = r_opt + args.contact_width
+        print(f"Processing {traj_path}. Cutoff window = {r_min} to {r_max}, r_opt = {r_opt}.")
 
         with as_traj(
             traj_file=traj_path
@@ -117,11 +124,14 @@ def main() -> None:
                 np.save(mol_lookup_file, molecule_id)
             nlist_dict = compute_filtered_nlist_base_pairs_traj(
                 traj=traj,
-                r_att=r_att,
+                r_min=r_min,
+                r_max=r_max,
                 exclude_chain=args.exclude_chain,
                 stride=args.stride,
                 r_opt=r_opt,
             )
+            nlist_dict["r_opt"] = np.array([r_opt])
+            nlist_dict["contact_width"] = np.array([args.contact_width])
             np.savez(output_file, **nlist_dict)
 
 
