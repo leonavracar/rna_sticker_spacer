@@ -12,8 +12,12 @@ analysis_functions_dir = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(analysis_functions_dir))
 
 from analysis_scripts.helpers import load_npz, as_traj, read_param
-from analysis_scripts.phase_separation import framewise_ps_rows_from_nlist_dict, get_log_KE_over_time, get_energy_terms
-
+from analysis_scripts.phase_separation import (
+    framewise_ps_rows_from_nlist_dict,
+    framewise_molecule_recurrence_rows_from_nlist_dict,
+    get_log_KE_over_time,
+    get_energy_terms,
+)
 BASE_DIR = analysis_functions_dir / "bulk" / "output_dir"
 
 
@@ -23,6 +27,8 @@ def main() -> None:
     )
     parser.add_argument("sweep_dir", help="Name of the sweep directory inside BASE_DIR")
     parser.add_argument("--min-intermol-bonds", type=int, default=2)
+    parser.add_argument("--recurrence-window", type=int, default=25)
+
     args = parser.parse_args()
 
     sweep_path = BASE_DIR / args.sweep_dir
@@ -60,6 +66,15 @@ def main() -> None:
                 min_intermol_bonds=args.min_intermol_bonds,
             )
             df = pd.DataFrame(rows)
+            # Recurrence metrics
+            rec_rows = framewise_molecule_recurrence_rows_from_nlist_dict(
+                nlist_dict=data,
+                molecule_id=molecule_id,
+                recurrence_window=args.recurrence_window,
+                min_intermol_bonds=args.min_intermol_bonds,
+            )
+            df_rec = pd.DataFrame(rec_rows)
+            df = df.join(df_rec.set_index("frame"), on="frame") # joining with rest of df
 
             traj_stem = npz_path.stem.removesuffix("_pairing")
             traj_path = run_dir / f"{traj_stem}.gsd"
@@ -67,8 +82,11 @@ def main() -> None:
             with as_traj(traj_path) as traj:
                 frame_idx = df["frame"].to_numpy(dtype=int) # get frame indices
                 steps = np.array([traj[int(i)].configuration.step for i in frame_idx], dtype = np.int64) # convert to steps
-                ke = get_log_KE_over_time(traj)
-                # Energy terms — only if logged
+                try: # KE only if logged
+                    ke = get_log_KE_over_time(traj)
+                except KeyError:
+                    ke = None
+                # Energy terms only if logged
                 ENERGY_KEYS = [
                     "md/compute/ThermodynamicQuantities/potential_energy",
                     "sqd_plugin/sqd_potential/SquareDensity/energy",
@@ -84,7 +102,7 @@ def main() -> None:
             dt = float(read_param(run_dir / "params.json", "dt"))
             df["step"] = steps
             df["time"] = df["step"] * dt
-            df["ke_per_particle"] = ke[frame_idx]
+            df["ke_per_particle"] = ke[frame_idx] if ke is not None else np.nan
             # Metadata
             run_number = run_dir.name.split("_", 1)[0]
             traj_id = traj_stem.replace("trajectory_", "traj_")

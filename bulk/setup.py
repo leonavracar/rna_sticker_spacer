@@ -798,7 +798,7 @@ def snapshot_ts7(par):
     dihedral_typeid = []
 
     offset = 0
-    rng = np.random.default_rng(par.seed)
+    rng = np.random.default_rng(par.init_seed)
     for mol_idx, sequence in enumerate(sequences):
         N = len(sequence)
         typeids.extend([par.type_names.index(x) for x in sequence])
@@ -1000,7 +1000,7 @@ def snapshot_2_particles(par: argparse.Namespace) -> gsd.hoomd.Frame:
 
 
     offset = 0
-    rng = np.random.default_rng(par.seed)
+    rng = np.random.default_rng(par.init_seed)
     for sequence in sequences:
         N = len(sequence)
         typeids.extend(type_to_id[x] for x in sequence)
@@ -1147,7 +1147,7 @@ def snapshot_sticker_spacer(par):
     angle_typeid = []
 
     offset = 0
-    rng = np.random.default_rng(par.seed)
+    rng = np.random.default_rng(par.init_seed)
 
     for sequence in sequences:
         N = len(sequence)

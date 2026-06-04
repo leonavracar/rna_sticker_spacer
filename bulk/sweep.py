@@ -1,18 +1,15 @@
 #!/usr/bin/env python
-#SBATCH --job-name=50a
+#SBATCH --job-name=51a_rerun
 #SBATCH --output=job_output/job_output2_%A_%a.txt
 #SBATCH --error=job_output/job_error2_%A_%a.txt
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=16G
-#SBATCH --qos=long
-#SBATCH --time=10:00:00
-#SBATCH --partition=g
+#SBATCH --mem=8G
+#SBATCH --qos=g_medium
+#SBATCH --time=48:00:00
+#SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
-#SBATCH --constraint=g4
-#SBATCH --array=0-35
-
-
+#SBATCH --array=110,114
 
 import argparse
 import os

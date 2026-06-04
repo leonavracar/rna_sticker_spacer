@@ -5,6 +5,9 @@ import numpy as np
 import operator
 import json
 from typing import Any
+from numpy.typing import NDArray
+import freud
+import gsd.hoomd
 
 """
 Helper functions to:
@@ -281,3 +284,12 @@ def print_missing_paths(sweep_dir, output_dir=DEFAULT_OUTDIR, n_replicates=5):
         print("\n".join(missing_paths))
 
 
+### UNWRAP ###
+
+
+def unwrap_frame(frame: gsd.hoomd.Frame) -> NDArray[np.float64]:
+    """Return unwrapped particle positions for one HOOMD frame."""
+    box = freud.box.Box.from_box(frame.configuration.box)
+    positions = box.unwrap(frame.particles.position, frame.particles.image)
+
+    return np.asarray(positions, dtype=np.float64)

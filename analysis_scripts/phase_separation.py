@@ -9,6 +9,8 @@ from numpy.typing import NDArray
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
 from scipy.signal import find_peaks
+from collections import deque
+from collections.abc import Iterable
 # ============================================================================
 # PAIRING ANALYSIS: Single nucleotide model
 # ============================================================================
@@ -870,6 +872,319 @@ def window_ps_rows_from_pair_counts_all_frames(
     return rows
 
 # ============================================================================
+# SINGLE MOLECULE: Radius of gyration, end-end distance, persistence length
+# ============================================================================
+
+def calc_rg_for_frame(
+    frame: gsd.hoomd.Frame,
+    scale: float = 1.0,
+) -> np.float64:
+    """
+    Compute the radius of gyration for one frame. Returns the Rg value scaled by scale.
+    """
+    box = freud.box.Box.from_box(frame.configuration.box)
+    positions = box.unwrap(frame.particles.position, frame.particles.image)
+
+    com = np.mean(positions, axis=0)
+    diff = positions - com
+    sq_dist = np.sum(diff**2, axis=1)
+
+    return np.float64(np.sqrt(np.mean(sq_dist)) * scale)
+
+
+def compute_rg_over_time(
+    traj: gsd.hoomd.HOOMDTrajectory,
+    scale: float = 1.0,
+    stride: int = 1,
+) -> NDArray[np.float64]:
+    """
+    Compute the radius of gyration for each sampled frame.
+    Returns an array of Rg values with shape (n_sampled_frames,).
+    """
+    frame_indices = np.arange(0, len(traj), stride, dtype=np.int64)
+    rg_values = np.empty(len(frame_indices), dtype=np.float64)
+
+    for i, frame_idx in enumerate(frame_indices):
+        rg_values[i] = calc_rg_for_frame(traj[int(frame_idx)], scale=scale)
+
+    return rg_values
+
+def calc_rg_from_positions(
+    positions: NDArray[np.float64],
+    scale: float = 1.0,
+) -> np.float64:
+    """
+    Calculates rg from unwrapped positions.
+    """
+    com = np.mean(positions, axis=0)
+    diff = positions - com
+    sq_dist = np.sum(diff**2, axis=1)
+
+    return np.float64(np.sqrt(np.mean(sq_dist)) * scale)
+
+# ============================================================================
+# END-TO-END DISTANCE
+# ============================================================================
+
+def calc_end_to_end_for_frame(
+    frame: gsd.hoomd.Frame,
+    scale: float = 1.0,
+) -> np.float64:
+    """
+    Compute the end-to-end distance for one frame. Returns the distance scaled by scale.
+
+    Assumes that particle order follows chain order, so the first and last particles
+    are the chain ends.
+    """
+    box = freud.box.Box.from_box(frame.configuration.box)
+    positions = box.unwrap(frame.particles.position, frame.particles.image)
+
+    end_to_end = np.linalg.norm(positions[-1] - positions[0])
+
+    return np.float64(end_to_end * scale)
+
+
+def compute_end_to_end_over_time(
+    traj: gsd.hoomd.HOOMDTrajectory,
+    scale: float = 1.0,
+    stride: int = 1,
+) -> NDArray[np.float64]:
+    """
+    Compute the end-to-end distance for each sampled frame.
+
+    Returns an array of end-to-end distances with shape (n_sampled_frames,).
+    """
+    frame_indices = np.arange(0, len(traj), stride, dtype=np.int64)
+    end_to_end_values = np.empty(len(frame_indices), dtype=np.float64)
+
+    for i, frame_idx in enumerate(frame_indices):
+        end_to_end_values[i] = calc_end_to_end_for_frame(
+            traj[int(frame_idx)],
+            scale=scale,
+        )
+
+    return end_to_end_values
+
+def calc_end_to_end_from_positions(
+    positions: NDArray[np.float64],
+    scale: float = 1.0,
+) -> np.float64:
+    """
+    Takes unwrapped positions and calculates end-end distance.
+    """
+    end_to_end = np.linalg.norm(positions[-1] - positions[0])
+
+    return np.float64(end_to_end * scale)
+
+
+# ============================================================================
+# Recurrence/contact metrics
+# ============================================================================
+
+def recurrence_from_contact_sets(
+    contact_sets: Iterable[set[tuple[int, int]]],
+) -> np.float64:
+    """
+    Calculate recurrence from contact sets in a rolling window.
+    """
+    all_contacts = [
+        contact
+        for contact_set in contact_sets
+        for contact in contact_set
+    ]
+
+    total_observations = len(all_contacts)
+
+    if total_observations == 0:
+        return np.float64(np.nan)
+
+    unique_contacts = len(set(all_contacts))
+    recurrence = 1.0 - unique_contacts / total_observations
+
+    return np.float64(recurrence)
+
+# ============================================================================
+# SINGLE MOLECULE: Recurrence/contact metrics
+# ============================================================================
+
+def contact_regions_from_arrays(
+    qi: np.ndarray,
+    pi: np.ndarray,
+    bin_mode: str = "repeat_window",
+    bin_size: int = 5,
+    repeat_size: int = 3,
+    repeat_window: int = 3,
+) -> set[tuple[int, int]]:
+    """
+    Convert particle contacts into chain-region contacts.
+    """
+    if bin_mode == "particle":
+        region_size = 1
+    elif bin_mode == "fixed":
+        region_size = bin_size
+    elif bin_mode == "repeat":
+        region_size = repeat_size
+    elif bin_mode == "repeat_window":
+        region_size = repeat_size * repeat_window
+    else:
+        raise ValueError(
+            "bin_mode must be one of: 'particle', 'fixed', 'repeat', 'repeat_window'."
+        )
+
+    regions = set()
+
+    for i, j in zip(qi, pi):
+        region_i = int(i) // region_size
+        region_j = int(j) // region_size
+
+        if region_i == region_j:
+            continue
+
+        regions.add((min(region_i, region_j), max(region_i, region_j)))
+
+    return regions
+
+def single_chain_frame_metrics_from_array(
+    qi: np.ndarray,
+    pi: np.ndarray,
+    bin_mode: str = "repeat_window",
+    bin_size: int = 5,
+    repeat_size: int = 3,
+    repeat_window: int = 3,
+) -> tuple[dict[str, float | int], set[tuple[int, int]]]:
+    """
+    Compute single-chain contact metrics for one frame.
+    """
+    contact_regions = contact_regions_from_arrays(
+        qi=qi,
+        pi=pi,
+        bin_mode=bin_mode,
+        bin_size=bin_size,
+        repeat_size=repeat_size,
+        repeat_window=repeat_window,
+    )
+
+    row = {
+        "particle_contacts": int(len(qi)),
+        "contact_regions": int(len(contact_regions)),
+    }
+
+    return row, contact_regions
+
+def framewise_single_chain_rows_from_nlist_dict(
+    nlist_dict: dict[str, np.ndarray],
+    recurrence_window: int = 25,
+    bin_mode: str = "repeat_window",
+    bin_size: int = 5,
+    repeat_size: int = 3,
+    repeat_window: int = 3,
+) -> list[dict[str, float | int]]:
+    """
+    Build framewise single-chain contact recurrence rows.
+    """
+    rows = []
+    recent_contact_sets: deque[set[tuple[int, int]]] = deque(
+        maxlen=recurrence_window
+    )
+
+    for frame_idx in nlist_dict["frame_indices"]:
+        frame_idx = int(frame_idx)
+
+        qi = nlist_dict[f"qi_{frame_idx}"]
+        pi = nlist_dict[f"pi_{frame_idx}"]
+
+        row = {"frame": frame_idx}
+
+        frame_metrics, contact_regions = single_chain_frame_metrics_from_array(
+            qi=qi,
+            pi=pi,
+            bin_mode=bin_mode,
+            bin_size=bin_size,
+            repeat_size=repeat_size,
+            repeat_window=repeat_window,
+        )
+
+        row.update(frame_metrics)
+
+        recent_contact_sets.append(contact_regions)
+
+        row["contact_region_recurrence_window"] = recurrence_from_contact_sets(
+            recent_contact_sets
+        )
+
+        rows.append(row)
+
+    return rows
+
+# ============================================================================
+# MULTIPLE MOLECULES: Recurrence/contact metrics
+# ============================================================================
+
+def molecule_contact_set_from_pair_counts(
+    pair_counts: Counter[tuple[int, int]],
+    min_intermol_bonds: int = 1,
+) -> set[tuple[int, int]]:
+    """
+    Convert molecule-pair contact counts into a molecule-pair contact set.
+    """
+    return {
+        pair
+        for pair, count in pair_counts.items()
+        if count >= min_intermol_bonds
+    }
+
+def framewise_molecule_recurrence_rows_from_nlist_dict(
+    nlist_dict: dict[str, np.ndarray],
+    molecule_id: np.ndarray,
+    recurrence_window: int = 25,
+    min_intermol_bonds: int = 1,
+) -> list[dict[str, float | int]]:
+    """
+    Build framewise molecule-contact recurrence rows.
+    """
+    rows = []
+    recent_contact_sets: deque[set[tuple[int, int]]] = deque(
+        maxlen=recurrence_window
+    )
+
+    for frame_idx in nlist_dict["frame_indices"]:
+        frame_idx = int(frame_idx)
+
+        qi = nlist_dict[f"qi_{frame_idx}"]
+        pi = nlist_dict[f"pi_{frame_idx}"]
+
+        pair_counts = count_molecule_contacts_from_array(
+            qi=qi,
+            pi=pi,
+            molecule_id=molecule_id,
+        )
+
+        molecule_contacts = molecule_contact_set_from_pair_counts(
+            pair_counts=pair_counts,
+            min_intermol_bonds=min_intermol_bonds,
+        )
+
+        recent_contact_sets.append(molecule_contacts)
+
+        rows.append(
+            {
+                "frame": frame_idx,
+                "molecule_contact_recurrence_window": recurrence_from_contact_sets(
+                    recent_contact_sets
+                ),
+            }
+        )
+
+    return rows
+
+# ============================================================================
+# MIXTURES CLUSTER ANALYSIS
+# ============================================================================
+
+
+
+
+# ============================================================================
 # Functions for computing EDA statistics 
 # ============================================================================
 
@@ -1052,7 +1367,7 @@ def make_summary_figure(
     df = df.copy().reset_index(drop=True)
     steps = df["step"].values
 
-    cols_to_smooth = ["E_pot", "E_sqd", "E_bond", "E_angle", "mono_frac","oligo_frac" "drop_frac"]
+    cols_to_smooth = ["E_pot", "E_sqd", "E_bond", "E_angle", "mono_frac","oligo_frac", "drop_frac"]
     for col in cols_to_smooth:
         if col in df.columns:
             df[f"{col}_smooth"] = df[col].rolling(window=smooth_window, center=True, min_periods=1).mean()

@@ -56,6 +56,18 @@ def main() -> None:
         help="How many consecutive base indexes are excluded from pairing? e.g. 3 -> 1-2, 1-3, 1-4 excluded",
     )
 
+    parser.add_argument(
+    "--run_ids",
+    nargs="+",
+    default=None,
+    help="Optional numeric folder prefixes to process, e.g. 251 252 253.",
+)
+    parser.add_argument(
+    "--overwrite",
+    action="store_true",
+    help="Recompute outputs even if valid .npz files already exist.",
+)
+
     args = parser.parse_args()
     # Confirm sweep path
     sweep_path = BASE_DIR / args.sweep_dir
@@ -63,10 +75,14 @@ def main() -> None:
         raise FileNotFoundError(f"Sweep directory not found: {sweep_path}")
 
     print(f"Reading from: {sweep_path}")
+    if args.run_ids is None:
+        traj_paths = sorted(sweep_path.glob("*/trajectory_*.gsd")) # get list of paths for each traj file
+    else: # in case we run script only on specific run folders
+        traj_paths = []
+        for run_id in args.run_ids:
+            matches = sorted(sweep_path.glob(f"{run_id}_*/trajectory_*.gsd"))
+            traj_paths.extend(matches)
 
-    traj_paths = sorted(
-        sweep_path.glob("*/trajectory_*.gsd")
-    )  # get list of paths for each traj file
 
     # Folder structure + calculation of pairing for each traj file
     for traj_path in traj_paths:
@@ -74,7 +90,14 @@ def main() -> None:
         output_dir = run_dir / "computed_metrics" / "pairing"
         output_dir.mkdir(parents=True, exist_ok=True)  # create the output folder
         output_file = output_dir / f"{traj_path.stem}_pairing.npz"
+        
+        if output_file.exists() and not args.overwrite:
+            print(f"Skipping {traj_path}: output already exists at {output_file}")
+            continue
 
+        if output_file.exists() and args.overwrite:
+            print(f"Overwriting existing output: {output_file}")
+            output_file.unlink()
         r_att = read_param(
             params_path=run_dir / "params.json", key="r_att_base"
         )  # get attraction radius

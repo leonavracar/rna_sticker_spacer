@@ -41,7 +41,7 @@ def get_params():
         "--kT", type=float, default=1, help="Temperature factor."
     )
     parser.add_argument(
-        "--N_steps", type=int, default=8_000_000, help="Steps in simulation."
+        "--N_steps", type=int, default=40_000_000, help="Steps in simulation."
     )
     parser.add_argument(
         "--N_write",
@@ -95,13 +95,18 @@ def get_params():
     )
     # Seed for reproduciblity
     parser.add_argument(
-    "--seed",
-    type=int,
-    default=None,
-    help=(
-        "Master random seed. If None, a random seed is generated automatically "
-        "and saved. Used to derive initialization and HOOMD seeds."
-    ),)
+        "--init_seed",
+        type=int,
+        default=None,
+        help="Seed for random initial configuration generation. If omitted, a random 32-bit seed is generated.",
+    )
+
+    parser.add_argument(
+        "--hoomd_seed",
+        type=int,
+        default=None,
+        help="Seed for HOOMD stochastic dynamics. Must be in [1, 65535]. If omitted, a random seed in this range is generated.",
+    )
 
     # Run sim from state
     parser.add_argument(

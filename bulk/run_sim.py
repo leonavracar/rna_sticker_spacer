@@ -9,6 +9,31 @@ from setup import *
 from simulation import *
 import secrets
 
+
+### Metadata for each replicate to log seeds
+def write_run_metadata(par, start_time, walltime_seconds = None):
+    metadata_dir = Path(par.output_dir) / "metadata"
+    metadata_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata = {
+        "suffix": par.suffix,
+        "init_seed": par.init_seed,
+        "hoomd_seed": par.hoomd_seed,
+        "output_dir": par.output_dir,
+        "command": "python " + " ".join(sys.argv),
+        "walltime_seconds": walltime_seconds,
+        "walltime_hours": walltime_seconds / 3600 if walltime_seconds else None,
+    }
+
+    metadata_path = metadata_dir / f"run_metadata{par.suffix}.json"
+
+    with open(metadata_path, "w") as f:
+        json.dump(metadata, f, indent=2, default=str)
+
+    print(f"Run metadata written: {metadata_path}")
+
+
+### Start of script ###
 base_dir = Path(__file__).resolve().parent
 os.chdir(base_dir)
 
@@ -31,8 +56,18 @@ par.__dict__.update(base_info())
 par.__dict__.update(derived_params(par))
 
 # Set seed
-if par.seed is None:
-    par.seed = secrets.randbelow(65535) + 1
+# if par.seed is None:
+#     par.seed = secrets.randbelow(65535) + 1
+
+if par.init_seed is None:
+    par.init_seed = secrets.randbelow(2**32)
+
+if par.hoomd_seed is None:
+    par.hoomd_seed = secrets.randbelow(65535) + 1
+
+if not (1 <= par.hoomd_seed <= 65535):
+    raise ValueError(f"hoomd_seed must be in [1, 65535], got {par.hoomd_seed}")
+
 
 # Different pairing dictionaries for different models
 if par.structure_type == "2_particles":
@@ -48,16 +83,12 @@ if not params_path.exists():
     with open(params_path, "w") as f:
         json.dump(par.__dict__, f)
 
-# Save command for this sim run
-with open(f"{par.output_dir}/command.txt", "w") as f:
-    f.write("python " + " ".join(sys.argv) + "\n")
-
 # Create simulation state, 
 if par.restart_from is not None:
     restart_path=Path(par.restart_from)
     if not restart_path.exists():
         raise FileNotFoundError(f"Restart file not found: {restart_path}")
-    sim = setup_simulation(restart_from=par.restart_from, restart_frame=par.restart_frame, seed =par.seed)
+    sim = setup_simulation(restart_from=par.restart_from, restart_frame=par.restart_frame, seed =par.hoomd_seed)
 else:
     if par.structure_type in['troubleshoot7', 'troubleshoot8']:
         snapshot = snapshot_ts7(par)
@@ -67,7 +98,7 @@ else:
         snapshot = snapshot_sticker_spacer(par)
     else:
         raise ValueError("Invalid structure_type.")
-    sim = setup_simulation(snapshot=snapshot, seed = par.seed)
+    sim = setup_simulation(snapshot=snapshot, seed = par.hoomd_seed)
 
 #snapshot = snapshot_multiple_rnas(par)
 forces, force_objs = initialize_model(par)
@@ -113,18 +144,14 @@ add_progress_printer(sim, logger, period=100_000)
 # Running sim for N_steps
 
 if not par.dry_run:
-
+    write_run_metadata(par, start_time)
     print(f"Running {par.N_steps} steps...")
-    run_simulation(sim, par, thermo)
+    try:
+        run_simulation(sim, par, thermo)
 
-    gsd_writer.flush()
+        gsd_writer.flush()
+    finally:
+        write_run_metadata(par, start_time, walltime_seconds=time.time()-start_time)
+
     print(f"Simulation finished in {time.time()-start_time:.2f} seconds.")
-
-# if not par.dry_run:
-
-#     print(f"Running {par.N_steps} steps...")
-#     sim.run(par.N_steps)
-
-#     gsd_writer.flush()
-#     print(f"Simulation finished in {time.time()-start_time:.2f} seconds.")
 

@@ -27,6 +27,7 @@ from analysis_scripts.phase_separation import (
     calc_volume,
     get_log_KE_stats,
     add_metric_summary_stats,
+    framewise_molecule_recurrence_rows_from_nlist_dict,
 )
 
 BASE_DIR = analysis_functions_dir / "bulk" / "output_dir"
@@ -41,6 +42,7 @@ FRAME_COLS = [
     "particle_contacts",
     "distinct_molecule_pairs",
     "qualifying_molecule_pairs",
+    "molecule_contact_recurrence_window",
     "inter_frac",
     "intra_frac",
 ]
@@ -59,11 +61,18 @@ def main() -> None:
         description="Build analysis_per_replicate.csv from saved pairing .npz files."
     )
     parser.add_argument("sweep_dir", help="Name of the sweep directory inside BASE_DIR.")
+    parser.add_argument(
+    "--run_ids",
+    nargs="+",
+    default=None,
+    help="Optional numeric folder prefixes to process, e.g. 251 252 253.",
+)
     parser.add_argument("--min-intermol-bonds", type=int, default=2)
     parser.add_argument("--window", type=int, default=3)
     parser.add_argument("--min-num-frames", type=int, default=2)
     parser.add_argument("--ke-fraction-last", type=float, default=0.3)
     parser.add_argument("--summary-fraction-last", type=float, default=0.2)
+    parser.add_argument("--recurrence-window", type=int, default=25)
     args = parser.parse_args()
 
     sweep_path = BASE_DIR / args.sweep_dir
@@ -73,7 +82,14 @@ def main() -> None:
     swept_param_keys = get_swept_param_keys(sweep_path / "parameters.txt")
     rows: list[dict[str, object]] = []
 
-    npz_paths = sorted(sweep_path.glob("*/computed_metrics/pairing/*_pairing.npz"))
+    if args.run_ids is None: # entire sweep folder
+        npz_paths = sorted(sweep_path.glob("*/computed_metrics/pairing/*_pairing.npz"))
+    else: # selected directories
+        npz_paths = []
+        for run_id in args.run_ids:
+            npz_paths.extend(
+                sorted(sweep_path.glob(f"{run_id}_*/computed_metrics/pairing/*_pairing.npz"))
+            )
     if not npz_paths:
         raise FileNotFoundError(f"No pairing .npz files found under: {sweep_path}")
 
@@ -92,7 +108,7 @@ def main() -> None:
         row["window"] = args.window
         row["min_num_frames"] = args.min_num_frames
         row["summary_fraction_last"] = args.summary_fraction_last
-
+        row["recurrence_window"] = args.recurrence_window
         data = load_npz(npz_path)
         molecule_id = np.load(mol_id_path)
 
@@ -127,7 +143,27 @@ def main() -> None:
             min_intermol_bonds=args.min_intermol_bonds,
         )
         frame_df = pd.DataFrame(frame_rows)
-        add_metric_summary_stats(row, frame_df, FRAME_COLS, prefix="inst_", fraction_last=args.summary_fraction_last)
+        # add recurrence
+        rec_rows = framewise_molecule_recurrence_rows_from_nlist_dict(
+            nlist_dict=data,
+            molecule_id=molecule_id,
+            recurrence_window=args.recurrence_window,
+            min_intermol_bonds=args.min_intermol_bonds,
+        )
+        rec_df = pd.DataFrame(rec_rows)
+
+        frame_df = frame_df.join(
+            rec_df.set_index("frame"),
+            on="frame",
+        )
+
+        add_metric_summary_stats(
+            row,
+            frame_df,
+            FRAME_COLS,
+            prefix="inst_",
+            fraction_last=args.summary_fraction_last,
+        )
 
         pair_counts_all_frames = count_molecule_contacts_from_all_arrays(data, molecule_id)
         window_rows = window_ps_rows_from_pair_counts_all_frames(

@@ -9,14 +9,15 @@ from contextlib import contextmanager
 from typing import Iterator
 from pathlib import Path
 import freud
+from typing import Any
 # ============================================================================
 # GLOBAL
 # ============================================================================
 
-def unwrap_frame(frame:gsd.hoomd.Frame) -> np.ndarray:
-    """Return unwrapped particle positions for one HOOMD frame."""
-    box = freud.box.Box.from_box(frame.configuration.box)
-    return box.unwrap(frame.particles.position, frame.particles.image)
+# def unwrap_frame(frame:gsd.hoomd.Frame) -> np.ndarray:
+#     """Return unwrapped particle positions for one HOOMD frame."""
+#     box = freud.box.Box.from_box(frame.configuration.box)
+#     return box.unwrap(frame.particles.position, frame.particles.image)
 
 def get_n_particles(traj: gsd.hoomd.HOOMDTrajectory) -> int:
     """Return the number of particles in the first trajectory frame."""
@@ -26,9 +27,10 @@ def get_n_particles(traj: gsd.hoomd.HOOMDTrajectory) -> int:
 def read_param(params_path: Path, key: str) -> float | int | str | None:
     """Read one parameter from a params.json file."""
     with open(params_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
+        content = f.read()
+    decoder = json.JSONDecoder()
+    data, _ = decoder.raw_decode(content)
     return data.get(key)
-
 
 @contextmanager
 def as_traj(
@@ -121,13 +123,32 @@ def get_swept_param_keys(params_path: Path) -> list[str]:
     return list(df_params.columns)
 
 
-def load_params_json(params_path: Path) -> dict[str, object]:
-    """
-    Load one params.json file.
-    """
-    with open(params_path, "r", encoding="utf-8") as f:
-        return json.load(f)
+# def load_params_json(params_path: Path) -> dict[str, object]:
+#     """
+#     Load one params.json file.
+#     """
+#     with open(params_path, "r", encoding="utf-8") as f:
+#         return json.load(f)
 
+def load_params_json(params_path: Path) -> dict[str, Any]:
+    """Load params.json, tolerating extra concatenated JSON after the first object."""
+    with open(params_path, "r", encoding="utf-8") as f:
+        content = f.read().strip()
+
+    if not content:
+        raise ValueError(f"Empty params.json: {params_path}")
+
+    decoder = json.JSONDecoder()
+    data, end = decoder.raw_decode(content)
+
+    extra = content[end:].strip()
+    if extra:
+        print(f"WARNING: Ignoring extra JSON data in {params_path} after char {end}")
+
+    if not isinstance(data, dict):
+        raise TypeError(f"Expected JSON object in {params_path}, got {type(data).__name__}")
+
+    return data
 
 def get_row_params_from_json(
     run_dir: Path,
