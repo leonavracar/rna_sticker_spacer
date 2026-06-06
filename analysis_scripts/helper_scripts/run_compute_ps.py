@@ -119,9 +119,13 @@ def main() -> None:
         ) as traj:  # open each traj, calculate, save npz
             # Save molecule lookup once per run_dir
             mol_lookup_file = output_dir / "molecule_lookup.npy"
-            if not mol_lookup_file.exists():
+
+            if args.overwrite or not mol_lookup_file.exists():
                 molecule_id = make_molecule_lookup_table(traj[0])
                 np.save(mol_lookup_file, molecule_id)
+            else:
+                molecule_id = np.load(mol_lookup_file)
+
             nlist_dict = compute_filtered_nlist_base_pairs_traj(
                 traj=traj,
                 r_min=r_min,

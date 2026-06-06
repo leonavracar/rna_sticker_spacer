@@ -12,32 +12,48 @@ LOG_DIR = Path("/groups/goloborodko/projects/leona/validation/bulk/pipeline_logs
 
 
 def run_command(cmd: list[str], log_file: Path) -> None:
-    print("\n" + "=" * 80)
-    print("Running:", " ".join(cmd))
-    print("Log:", log_file)
-    print("=" * 80)
+    header = (
+        "\n" + "=" * 80 + "\n"
+        f"Started: {datetime.now()}\n"
+        "Command: " + " ".join(cmd) + "\n"
+        f"Log: {log_file}\n"
+        + "=" * 80 + "\n"
+    )
 
-    with log_file.open("a") as log:
-        log.write("\n" + "=" * 80 + "\n")
-        log.write(f"Started: {datetime.now()}\n")
-        log.write("Command: " + " ".join(cmd) + "\n")
-        log.write("=" * 80 + "\n")
+    print(header, flush=True)
+
+    with log_file.open("a", buffering=1) as log:
+        log.write(header)
         log.flush()
 
-        result = subprocess.run(
+        process = subprocess.Popen(
             cmd,
-            stdout=log,
+            stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
+            bufsize=1,
         )
 
-        log.write(f"\nFinished: {datetime.now()}\n")
-        log.write(f"Return code: {result.returncode}\n")
+        assert process.stdout is not None
+
+        for line in process.stdout:
+            print(line, end="", flush=True)
+            log.write(line)
+            log.flush()
+
+        returncode = process.wait()
+
+        footer = (
+            f"\nFinished: {datetime.now()}\n"
+            f"Return code: {returncode}\n"
+        )
+
+        print(footer, flush=True)
+        log.write(footer)
         log.flush()
 
-    if result.returncode != 0:
+    if returncode != 0:
         raise RuntimeError(f"Command failed: {' '.join(cmd)}")
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -121,6 +137,7 @@ def main() -> None:
     def compute_cmd_for(sweep_dir: str) -> list[str]:
         cmd = [
             sys.executable,
+            "-u",
             str(compute_script),
             sweep_dir,
             "--stride",
@@ -139,6 +156,7 @@ def main() -> None:
     def framewise_cmd_for(sweep_dir: str) -> list[str]:
         cmd = [
             sys.executable,
+            "-u",
             str(framewise_script),
             sweep_dir,
             "--min-intermol-bonds",
@@ -152,6 +170,7 @@ def main() -> None:
     def analysis_cmd_for(sweep_dir: str) -> list[str]:
         cmd = [
             sys.executable,
+            "-u",
             str(analysis_script),
             sweep_dir,
             "--min-intermol-bonds",
@@ -169,6 +188,7 @@ def main() -> None:
     def mixture_framewise_cmd_for(sweep_dir: str) -> list[str]:
         cmd = [
             sys.executable,
+            "-u",
             str(mixture_framewise_script),
             sweep_dir,
             "--min-intermol-bonds",

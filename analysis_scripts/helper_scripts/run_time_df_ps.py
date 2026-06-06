@@ -28,20 +28,31 @@ def main() -> None:
     parser.add_argument("sweep_dir", help="Name of the sweep directory inside BASE_DIR")
     parser.add_argument("--min-intermol-bonds", type=int, default=2)
     parser.add_argument("--recurrence-window", type=int, default=25)
-
+    parser.add_argument(
+    "--run_ids",
+    nargs="+",
+    default=None,
+    help="Optional numeric folder prefixes to process, e.g. 18 19 20.",)
     args = parser.parse_args()
 
     sweep_path = BASE_DIR / args.sweep_dir
     if not sweep_path.is_dir():
         raise FileNotFoundError(f"Sweep directory not found: {sweep_path}")
-
-    npz_paths = sorted(sweep_path.glob("*/computed_metrics/pairing/*_pairing.npz"))
+    # Only running run_ids if provided
+    if args.run_ids is None:
+        npz_paths = sorted(sweep_path.glob("*/computed_metrics/pairing/*_pairing.npz"))
+    else:
+        npz_paths = []
+        for run_id in args.run_ids:
+            npz_paths.extend(
+                sorted(sweep_path.glob(f"{run_id}_*/computed_metrics/pairing/*_pairing.npz"))
+            )
     if not npz_paths:
         raise FileNotFoundError(f"No pairing .npz files found under: {sweep_path}")
 
     n_done = 0
     n_failed = 0
-    all_dfs = [] # combining framewise data for all runs in a sweep
+
 
     for npz_path in npz_paths:
         run_dir = npz_path.parent.parent.parent
@@ -117,7 +128,7 @@ def main() -> None:
             df["density"] = read_param(run_dir / "params.json", "density")
             # Make csv
             df.to_csv(out_csv, index=False)
-            all_dfs.append(df) # all runs
+
 
             print(f"Saved: {out_csv}")
             n_done += 1
@@ -126,12 +137,19 @@ def main() -> None:
             print(f"Failed on {npz_path}: {type(e).__name__}: {e!r}")
             traceback.print_exc(limit=2)
             n_failed += 1
-    if all_dfs:
-        combined_df = pd.concat(all_dfs, ignore_index=True)
+    # Building the combined framewise
+    framewise_csvs = sorted(sweep_path.glob("*/framewise/*_framewise_ps.csv"))
+
+    if framewise_csvs:
+        combined_df = pd.concat(
+            [pd.read_csv(csv_path) for csv_path in framewise_csvs],
+            ignore_index=True
+        )
         combined_csv = sweep_path / "analysis_framewise.csv"
         combined_df.to_csv(combined_csv, index=False)
         print(f"Saved combined framewise CSV: {combined_csv}")
-    
+        print(f"Included {len(framewise_csvs)} per-run framewise CSVs")
+        
     print(f"Finished. Saved {n_done} framewise CSVs. Failed: {n_failed}")
 
 

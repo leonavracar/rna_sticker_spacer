@@ -415,7 +415,7 @@ def main() -> None:
 
         out_dir = run_dir / "framewise"
         out_dir.mkdir(exist_ok=True)
-        out_csv = out_dir / f"{npz_path.stem}_mixture_framewise_ps.csv"
+        out_csv = out_dir / f"{npz_path.stem}_framewise_ps.csv"
 
         if not mol_id_path.exists():
             print(f"Skipping {npz_path}: missing molecule_lookup.npy")
