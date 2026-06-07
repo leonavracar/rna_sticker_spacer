@@ -77,6 +77,11 @@ def main() -> None:
                 min_intermol_bonds=args.min_intermol_bonds,
             )
             df = pd.DataFrame(rows)
+            df_err = pd.DataFrame({
+                "frame": data["frame_indices"],
+                "error_rate": data["error_rates"],
+            })
+            df = df.merge(df_err, on="frame", how="left")
             # Recurrence metrics
             rec_rows = framewise_molecule_recurrence_rows_from_nlist_dict(
                 nlist_dict=data,

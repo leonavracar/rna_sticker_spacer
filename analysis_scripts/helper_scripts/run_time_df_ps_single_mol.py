@@ -254,7 +254,13 @@ def main() -> None:
                 repeat_size=args.repeat_size,
                 repeat_window=args.repeat_window,
             )
-
+            # add error rate
+            df_err = pd.DataFrame({
+                "frame": data["frame_indices"],
+                "error_rate": data["error_rates"],
+            })
+            df_contacts = df_contacts.merge(df_err, on="frame", how="left")
+            
             traj_stem = npz_path.stem.removesuffix("_pairing")
             traj_path = run_dir / f"{traj_stem}.gsd"
 

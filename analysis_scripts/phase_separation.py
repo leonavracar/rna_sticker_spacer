@@ -145,26 +145,6 @@ def neighbor_exclusion_mask(
     return ~n_exc_mask
 
 
-# def valency_mask(
-#     qi: np.ndarray, pi: np.ndarray, distances: np.ndarray, r_opt: float = 0.5
-# ) -> np.ndarray:
-#     """Mask to filter out particles with multiple possible bonded partners.
-#     Only the partner closest to r_opt is kept.
-#     """
-#     scores = np.abs(distances - r_opt)
-#     order = np.argsort(scores)  # best score (closest to r_opt) first
-#     bonded = set()
-#     keep = np.zeros(len(qi), dtype=bool)
-
-#     for idx in order:
-#         i, j = qi[idx], pi[idx]
-#         if i not in bonded and j not in bonded:
-#             keep[idx] = True
-#             bonded.add(i)
-#             bonded.add(j)
-
-#     return keep
-
 def valency_mask(qi, pi, distances, r_opt=0.5):
     """Mutual best-partner matching: keep pair iff each endpoint's
     closest-to-r_opt candidate is the other endpoint."""
@@ -315,30 +295,6 @@ def transform_and_filter_counter_to_dict(molecule_edges_counter: Counter, min_co
 # Mono/Oligo/Droplet-mer analysis
 # ============================================================================
 
-
-# def get_cluster_sizes_from_nlist(
-#     nlist_filt: freud.NeighborList,
-#     molecule_id: np.ndarray,
-#     min_intermol_bonds: int = 2,
-# ) -> list[int]:
-#     """Find cluster sizes from nlist using connected graph."""
-#     G = nx.Graph()
-#     n_molecules = molecule_id[-1] + 1
-#     G.add_nodes_from(range(n_molecules))
-
-#     pair_counts = Counter()
-#     # add edge for molecule connections if they exceed min_intermol_bonds
-#     for i, j in zip(nlist_filt.query_point_indices, nlist_filt.point_indices):
-#         mol_i = molecule_id[i]
-#         mol_j = molecule_id[j]
-#         # to avoid duplicates e.g. (1,2) and (2, 1) appearing as separate keys
-#         mol_a = min(mol_i, mol_j)
-#         mol_b = max(mol_i, mol_j)
-#         if mol_a != mol_b:
-#             pair_counts[(mol_a, mol_b)] += 1
-#             G.add_edge(mol_a, mol_b)
-#     cluster_sizes = [len(c) for c in nx.connected_components(G)]
-#     return cluster_sizes
 
 
 def get_cluster_sizes_from_array(
@@ -767,11 +723,211 @@ def get_log_KE_stats(traj: gsd.hoomd.HOOMDTrajectory, fraction_last:float = 0.3)
     }   
 
 # ============================================================================
-# STRUCTURE FACTOR
+# MOLECULE GRAPH HELPERS
 # ============================================================================
 
+def molecule_contact_counter_to_edge_arrays(
+    pair_counts: Counter[tuple[int, int]],
+    frame_idx: int,
+) -> dict[str, np.ndarray]:
+    """
+    Convert molecule-pair contact counts for one frame into aligned edge-list arrays.
+
+    Output arrays all have shape (n_edges_in_frame,).
+
+    Returns
+    -------
+    dict[str, np.ndarray]
+        {
+            "frame": repeated frame index for each edge,
+            "mol_a": first molecule ID,
+            "mol_b": second molecule ID,
+            "n_contacts": number of particle-level contacts between mol_a and mol_b,
+        }
+    """
+    if len(pair_counts) == 0:
+        return {
+            "frame": np.array([], dtype=np.int64),
+            "mol_a": np.array([], dtype=np.int64),
+            "mol_b": np.array([], dtype=np.int64),
+            "n_contacts": np.array([], dtype=np.int64),
+        }
+
+    pairs = sorted(pair_counts.items())
+
+    mol_a = np.array([pair[0][0] for pair in pairs], dtype=np.int64)
+    mol_b = np.array([pair[0][1] for pair in pairs], dtype=np.int64)
+    n_contacts = np.array([count for _, count in pairs], dtype=np.int64)
+    frame = np.full(len(pairs), frame_idx, dtype=np.int64)
+
+    return {
+        "frame": frame,
+        "mol_a": mol_a,
+        "mol_b": mol_b,
+        "n_contacts": n_contacts,
+    }
 
 
+def build_molecule_contact_edge_dict_from_pairing_npz(
+    pairing_npz: np.lib.npyio.NpzFile,
+    molecule_id: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """
+    Build one molecule-level contact edge-list dictionary from a saved pairing NPZ.
+
+    Output format:
+        frame          shape (n_edges_total,)
+        mol_a          shape (n_edges_total,)
+        mol_b          shape (n_edges_total,)
+        n_contacts     shape (n_edges_total,)
+        frame_indices  shape (n_frames,)
+        n_molecules    shape (1,)
+
+    Each row k describes one molecule-molecule edge:
+        frame[k], mol_a[k], mol_b[k], n_contacts[k]
+    """
+    frame_indices = pairing_npz["frame_indices"].astype(np.int64)
+    n_molecules = int(molecule_id.max()) + 1
+
+    frame_chunks = []
+    mol_a_chunks = []
+    mol_b_chunks = []
+    n_contacts_chunks = []
+
+    for frame_idx in frame_indices:
+        frame_idx = int(frame_idx)
+
+        qi = pairing_npz[f"qi_{frame_idx}"]
+        pi = pairing_npz[f"pi_{frame_idx}"]
+
+        pair_counts = count_molecule_contacts_from_array(
+            qi=qi,
+            pi=pi,
+            molecule_id=molecule_id,
+        )
+
+        edge_arrays = molecule_contact_counter_to_edge_arrays(
+            pair_counts=pair_counts,
+            frame_idx=frame_idx,
+        )
+
+        frame_chunks.append(edge_arrays["frame"])
+        mol_a_chunks.append(edge_arrays["mol_a"])
+        mol_b_chunks.append(edge_arrays["mol_b"])
+        n_contacts_chunks.append(edge_arrays["n_contacts"])
+
+    if len(frame_chunks) == 0:
+        frame = np.array([], dtype=np.int64)
+        mol_a = np.array([], dtype=np.int64)
+        mol_b = np.array([], dtype=np.int64)
+        n_contacts = np.array([], dtype=np.int64)
+    else:
+        frame = np.concatenate(frame_chunks)
+        mol_a = np.concatenate(mol_a_chunks)
+        mol_b = np.concatenate(mol_b_chunks)
+        n_contacts = np.concatenate(n_contacts_chunks)
+
+    return {
+        "frame": frame,
+        "mol_a": mol_a,
+        "mol_b": mol_b,
+        "n_contacts": n_contacts,
+        "frame_indices": frame_indices,
+        "n_molecules": np.array([n_molecules], dtype=np.int64),
+    }
+
+def component_size_distribution_from_edge_npz_frame(
+    edge_npz: np.lib.npyio.NpzFile,
+    frame_idx: int,
+    min_contacts: int = 1,
+) -> list[dict[str, float | int]]:
+    """
+    Compute exact component-size distribution for one frame from molecule-edge NPZ.
+
+    Returns one row per observed cluster/component size.
+
+    Output columns:
+        cluster_size
+        n_clusters
+        n_mols_in_clusters
+        frac_mols
+
+    Notes
+    -----
+    Monomers are included because all molecules are added as graph nodes before edges.
+    """
+    n_molecules = int(edge_npz["n_molecules"][0])
+
+    frame = edge_npz["frame"]
+    mol_a = edge_npz["mol_a"]
+    mol_b = edge_npz["mol_b"]
+    n_contacts = edge_npz["n_contacts"]
+
+    keep = (frame == frame_idx) & (n_contacts >= min_contacts)
+
+    G = nx.Graph()
+    G.add_nodes_from(range(n_molecules))
+
+    for a, b, count in zip(mol_a[keep], mol_b[keep], n_contacts[keep]):
+        G.add_edge(int(a), int(b), weight=int(count))
+
+    cluster_sizes = [len(component) for component in nx.connected_components(G)]
+    cluster_counts = Counter(cluster_sizes)
+
+    rows = []
+
+    for cluster_size in sorted(cluster_counts):
+        n_clusters = int(cluster_counts[cluster_size])
+        n_mols_in_clusters = int(cluster_size * n_clusters)
+
+        rows.append(
+            {
+                "cluster_size": int(cluster_size),
+                "n_clusters": n_clusters,
+                "n_mols_in_clusters": n_mols_in_clusters,
+                "frac_mols": (
+                    n_mols_in_clusters / n_molecules
+                    if n_molecules > 0
+                    else np.nan
+                ),
+            }
+        )
+
+    return rows
+
+
+def component_size_distribution_rows_from_edge_npz(
+    edge_npz: np.lib.npyio.NpzFile,
+    min_contacts: int = 1,
+) -> list[dict[str, float | int]]:
+    """
+    Compute exact framewise component-size distribution from molecule-edge NPZ.
+
+    Returns long-format rows:
+        frame
+        min_contacts
+        cluster_size
+        n_clusters
+        n_mols_in_clusters
+        frac_mols
+    """
+    rows = []
+
+    for frame_idx in edge_npz["frame_indices"]:
+        frame_idx = int(frame_idx)
+
+        frame_rows = component_size_distribution_from_edge_npz_frame(
+            edge_npz=edge_npz,
+            frame_idx=frame_idx,
+            min_contacts=min_contacts,
+        )
+
+        for row in frame_rows:
+            row["frame"] = frame_idx
+            row["min_contacts"] = min_contacts
+            rows.append(row)
+
+    return rows
 
 # ============================================================================
 # Functions for making a csv/df

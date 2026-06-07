@@ -41,6 +41,7 @@ def setup_validation_paths(sweep_dir_name: str) -> dict[str, Path]:
         "framewise_csv": sweep_dir / "analysis_framewise.csv",
         "parameters_txt": sweep_dir / "parameters.txt",
         "analysis_per_replicate_csv": sweep_dir / "analysis_per_replicate.csv",
+        "error_rate": sweep_dir / "analysis_error_rate.csv"
     }
 
 def setup_npz_mp_paths(sweep_dir:str, run_dir_num:str, rep_num:int = 0) -> dict[str, Path]:
@@ -361,7 +362,7 @@ def get_label(col: str, label_map: dict[str, str] | None = LABEL_MAP) -> str:
 @dataclass
 class PlotStyle:
     # Global
-    cmap: str = "plasma"
+    cmap: str = "YlOrBr"
     show_grid: bool = True
     grid_alpha: float = 0.25
     legend_loc: str = "best"
@@ -420,23 +421,18 @@ def plot_scatter_summary(
     color_col: str,
     style: PlotStyle,
     label_map: dict[str, str] | None = LABEL_MAP,
+    vmin: float | None = None,
+    vmax: float | None = None,
+    run_col: str | None = "run_id",
+    show_n: bool = True,
 ) -> tuple[plt.Axes, PathCollection]:
     """
     Plot framewise observations as a pooled scatter plot.
 
-    Each row in df is drawn as one point. If df contains multiple replicates,
-    replicates are pooled rather than summarized or separated.
-
-    The x-axis is treated categorically, so numeric values like 1, 2, and 32
-    are evenly spaced.
+    Colors map color_col values via style.cmap. If vmin/vmax are given,
+    the colormap is normalized globally so multiple panels share a meaningful
+    colorbar. If omitted, matplotlib auto-scales per panel.
     """
-    c = df[color_col]
-
-    if c.max() == c.min():
-        c_norm = np.zeros(len(c))
-    else:
-        c_norm = (c - c.min()) / (c.max() - c.min())
-
     x_values = sorted(df[x_col].dropna().unique())
     x_map = {value: i for i, value in enumerate(x_values)}
     x_pos = df[x_col].map(x_map).astype(float)
@@ -450,8 +446,10 @@ def plot_scatter_summary(
     sc = ax.scatter(
         x_plot,
         df[y_col],
-        c=c_norm,
+        c=df[color_col],          # raw values, not normalized
         cmap=style.cmap,
+        vmin=vmin,                # global min if provided
+        vmax=vmax,                # global max if provided
         alpha=style.alpha,
         s=style.point_size,
         linewidths=0,
@@ -459,14 +457,30 @@ def plot_scatter_summary(
 
     ax.set_xticks(range(len(x_values)))
     ax.set_xticklabels(x_values)
-
     ax.set_xlabel(get_label(x_col, label_map))
     ax.set_ylabel(get_label(y_col, label_map))
 
     if style.show_grid:
-        ax.grid(True, alpha=0.25)
-
+        ax.grid(True, alpha=style.grid_alpha)
+    if show_n and run_col is not None and run_col in df.columns:
+        n_per_x = df.groupby(x_col)[run_col].nunique()
+        y_top = df[y_col].max()
+        y_pad = 0.05 * (df[y_col].max() - df[y_col].min())
+        for x_val, n in n_per_x.items():
+            if x_val in x_map:
+                ax.text(
+                    x_map[x_val], y_top + y_pad,
+                    f"n={n}",
+                    ha="center", va="bottom",
+                    fontsize=8, color="gray",
+                )
     return ax, sc
+
+def capture_handle(plot_fn: Callable[[pd.DataFrame, plt.Axes], None], handles:list, handle_idx:int, **kwargs):
+    def wrapped(df, ax):
+        result = plot_fn(df, ax)
+        handles.append(result[handle_idx])
+    return wrapped
 
 def plot_box_summary(
     df: pd.DataFrame,
@@ -929,9 +943,15 @@ def plot_panels_by_group(
     for ax, (group_values, d_panel) in zip(axes, grouped):
         plot_fn(d_panel, ax)
         ax.set_title(make_panel_title(group_values, panel_cols, label_map))
-
+    title_parts = []
     if suptitle:
-        fig.suptitle(suptitle)
+        title_parts.append(suptitle)
+    if final_fraction is not None:
+        pct = int(round(final_fraction * 100))
+        title_parts.append(f"last {pct}% of frames")
+
+    if title_parts:
+        fig.suptitle(" — ".join(title_parts))
     fig.tight_layout()
     return fig, axes
 

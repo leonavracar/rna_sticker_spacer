@@ -452,7 +452,13 @@ def main() -> None:
             mixture_df = pd.DataFrame(mixture_rows)
 
             df = base_df.merge(mixture_df, on="frame", how="left")
-
+            # add error rates
+            df_err = pd.DataFrame({
+                "frame": data["frame_indices"],
+                "error_rate": data["error_rates"],
+            })
+            df = df.merge(df_err, on="frame", how="left")
+            
             traj_stem = npz_path.stem.removesuffix("_pairing")
             traj_path = run_dir / f"{traj_stem}.gsd"
 
