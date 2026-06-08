@@ -64,7 +64,7 @@ def main() -> None:
             f"Output already exists: {out_csv}. Use --overwrite to replace it."
         )
 
-    print(f"Reading from: {sweep_path}")
+    print(f"Reading from: {sweep_path}", flush=True)
 
     if args.run_ids is None:
         edge_npz_paths = sorted(

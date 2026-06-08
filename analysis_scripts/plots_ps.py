@@ -41,7 +41,8 @@ def setup_validation_paths(sweep_dir_name: str) -> dict[str, Path]:
         "framewise_csv": sweep_dir / "analysis_framewise.csv",
         "parameters_txt": sweep_dir / "parameters.txt",
         "analysis_per_replicate_csv": sweep_dir / "analysis_per_replicate.csv",
-        "error_rate": sweep_dir / "analysis_error_rate.csv"
+        "error_rate": sweep_dir / "analysis_error_rate.csv",
+        "clusters": sweep_dir / "analysis_clusters.csv",
     }
 
 def setup_npz_mp_paths(sweep_dir:str, run_dir_num:str, rep_num:int = 0) -> dict[str, Path]:

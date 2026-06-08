@@ -895,37 +895,110 @@ def component_size_distribution_from_edge_npz_frame(
 
     return rows
 
+def _find(parent: np.ndarray, x: int) -> int:
+    """Find root with path compression."""
+    while parent[x] != x:
+        parent[x] = parent[parent[x]]
+        x = int(parent[x])
+    return int(x)
+
+
+def _union(parent: np.ndarray, size: np.ndarray, a: int, b: int) -> None:
+    """Union two components by size."""
+    root_a = _find(parent, a)
+    root_b = _find(parent, b)
+
+    if root_a == root_b:
+        return
+
+    if size[root_a] < size[root_b]:
+        root_a, root_b = root_b, root_a
+
+    parent[root_b] = root_a
+    size[root_a] += size[root_b]
 
 def component_size_distribution_rows_from_edge_npz(
     edge_npz: np.lib.npyio.NpzFile,
     min_contacts: int = 1,
 ) -> list[dict[str, float | int]]:
     """
-    Compute exact framewise component-size distribution from molecule-edge NPZ.
+    Fast exact component-size distribution from molecule-edge NPZ.
 
-    Returns long-format rows:
+    Output rows:
         frame
         min_contacts
         cluster_size
         n_clusters
         n_mols_in_clusters
         frac_mols
+
+    This avoids scanning the full edge table once per frame.
     """
+    n_molecules = int(edge_npz["n_molecules"][0])
+
+    frame_indices = edge_npz["frame_indices"].astype(np.int64)
+
+    frame = edge_npz["frame"].astype(np.int64)
+    mol_a = edge_npz["mol_a"].astype(np.int64)
+    mol_b = edge_npz["mol_b"].astype(np.int64)
+    n_contacts = edge_npz["n_contacts"].astype(np.int64)
+
+    keep = n_contacts >= min_contacts
+
+    frame = frame[keep]
+    mol_a = mol_a[keep]
+    mol_b = mol_b[keep]
+
+    order = np.argsort(frame)
+    frame = frame[order]
+    mol_a = mol_a[order]
+    mol_b = mol_b[order]
+
+    unique_frames, starts, counts = np.unique(
+        frame,
+        return_index=True,
+        return_counts=True,
+    )
+
+    frame_to_slice = {
+        int(f): slice(int(start), int(start + count))
+        for f, start, count in zip(unique_frames, starts, counts)
+    }
+
     rows = []
 
-    for frame_idx in edge_npz["frame_indices"]:
+    for frame_idx in frame_indices:
         frame_idx = int(frame_idx)
 
-        frame_rows = component_size_distribution_from_edge_npz_frame(
-            edge_npz=edge_npz,
-            frame_idx=frame_idx,
-            min_contacts=min_contacts,
-        )
+        parent = np.arange(n_molecules, dtype=np.int64)
+        size = np.ones(n_molecules, dtype=np.int64)
 
-        for row in frame_rows:
-            row["frame"] = frame_idx
-            row["min_contacts"] = min_contacts
-            rows.append(row)
+        if frame_idx in frame_to_slice:
+            sl = frame_to_slice[frame_idx]
+
+            for a, b in zip(mol_a[sl], mol_b[sl]):
+                _union(parent, size, int(a), int(b))
+
+        roots = np.array([_find(parent, i) for i in range(n_molecules)])
+        root_counts = np.bincount(roots, minlength=n_molecules)
+        component_sizes = root_counts[root_counts > 0]
+
+        cluster_counts = Counter(component_sizes.tolist())
+
+        for cluster_size in sorted(cluster_counts):
+            n_clusters = int(cluster_counts[cluster_size])
+            n_mols_in_clusters = int(cluster_size * n_clusters)
+
+            rows.append(
+                {
+                    "frame": frame_idx,
+                    "min_contacts": min_contacts,
+                    "cluster_size": int(cluster_size),
+                    "n_clusters": n_clusters,
+                    "n_mols_in_clusters": n_mols_in_clusters,
+                    "frac_mols": n_mols_in_clusters / n_molecules,
+                }
+            )
 
     return rows
 

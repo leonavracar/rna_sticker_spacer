@@ -36,3 +36,4 @@ conda-env/
 
 # System files
 .DS_Store
+analysis_scripts/helper_scripts/nohup.out
