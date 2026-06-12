@@ -12,6 +12,65 @@ import numpy as np
 import math
 import os
 from dataclasses import dataclass
+
+
+# ============================================================================
+# LABEL HANDLING
+# ============================================================================
+
+LABEL_MAP = {
+    # ── Time axis ────────────────────────────────────────────────────────────
+    "step":                 "Simulation Step",
+    "frame":                "Frame",
+    "time":                 "Time",
+
+    # ── Simulation parameters ─────────────────────────────────────────────
+    "E_att":                "E_att",
+    "angle_k_ppp":          "Chain Stiffness",
+    "density":              "ρ",
+    "molecule_file":        "RNA",
+
+    # ── Logged simulation quantities ──────────────────────────────────────
+    "ke_per_particle":      "KE/N",
+    "E_pot":                "E_pot",
+    "E_SQD":                "E_SQD",
+    "E_bond":               "E_bond",
+    "E_angle":              "E_angle",
+
+    # ── Single-molecule conformation ──────────────────────────────────────
+    "rg":                   "Rg",
+    "end_to_end_distance":  "R",
+
+    # ── Base-pair contacts ────────────────────────────────────────────────
+    "particle_contacts":                    "N_bp",
+    "distinct_molecule_pairs":              "N_mol-pair",
+    "qualifying_molecule_pairs":            "N*_mol-pair",
+    "inter_frac":                           "f_inter",
+    "intra_frac":                           "f_intra",
+
+    # ── Recurrence ────────────────────────────────────────────────────────
+    "contact_regions_particle":             "N_reg (exact)",
+    "contact_region_recurrence_particle":   "R_rec (exact)",
+    "contact_regions_fixed":                "N_reg (fixed bin)",
+    "contact_region_recurrence_fixed":      "R_rec (fixed bin)",
+    "contact_regions_repeat":               "N_reg (repeat unit)",
+    "contact_region_recurrence_repeat":     "R_rec (repeat unit)",
+    "contact_regions_repeat_window":        "N_reg (repeat window)",
+    "contact_region_recurrence_repeat_window": "R_rec (repeat window)",
+    "molecule_contact_recurrence_window":     "rec_mol",
+
+    # ── Cluster / phase fractions ─────────────────────────────────────────
+    "mono_frac":                            "f_mono",
+    "oligo_frac":                           "f_oligo",
+    "drop_frac":                            "f_droplet",
+    "largest_cluster":                      "largest cluster",
+    "n_clusters":                           "N_clusters",
+    "cluster_size": "Cluster size",
+    "frac_mols": "Fraction of molecules",
+    "n_clusters": "Number of clusters",
+    "n_mols_in_clusters": "Molecules in clusters",
+}
+
 # ============================================================================
 # Preparing framewise.csv for plotting
 # ============================================================================
@@ -290,57 +349,151 @@ def melt_metrics(df, metrics, id_vars=("frame", "run_id", "molecule_file")):
     )
 
 # ============================================================================
-# LABEL HANDLING
+# BINNING (cluster df)
 # ============================================================================
 
-LABEL_MAP = {
-    # ── Time axis ────────────────────────────────────────────────────────────
-    "step":                 "Simulation Step",
-    "frame":                "Frame",
-    "time":                 "Time",
+CLUSTER_ID_COLS = [
+    "run_id",
+    "folder_name",
+    "traj_replicate",
+    "frame",
+    "step",
+    "E_att",
+    "angle_k_ppp",
+    "density",
+    "min_contacts",
+]
 
-    # ── Simulation parameters ─────────────────────────────────────────────
-    "E_att":                "E_att",
-    "angle_k_ppp":          "Chain Stiffness",
-    "density":              "ρ",
-    "molecule_file":        "RNA",
 
-    # ── Logged simulation quantities ──────────────────────────────────────
-    "ke_per_particle":      "KE/N",
-    "E_pot":                "E_pot",
-    "E_SQD":                "E_SQD",
-    "E_bond":               "E_bond",
-    "E_angle":              "E_angle",
+def make_binned_cluster_df(
+    cdf: pd.DataFrame,
+    bin_edges: list[int] | None = None,
+    bin_labels: list[str] | None = None,
+    id_cols: list[str] | None = None,
+) -> pd.DataFrame:
+    if bin_edges is None:
+        bin_edges = [0, 1, 2, 3, 9, 19, 49, 100]
 
-    # ── Single-molecule conformation ──────────────────────────────────────
-    "rg":                   "Rg",
-    "end_to_end_distance":  "R",
+    if bin_labels is None:
+        bin_labels = ["mono", "di", "tri", "4-9", "10-19", "20-49", "50+"]
 
-    # ── Base-pair contacts ────────────────────────────────────────────────
-    "particle_contacts":                    "N_bp",
-    "distinct_molecule_pairs":              "N_mol-pair",
-    "qualifying_molecule_pairs":            "N*_mol-pair",
-    "inter_frac":                           "f_inter",
-    "intra_frac":                           "f_intra",
+    if id_cols is None:
+        id_cols = CLUSTER_ID_COLS
 
-    # ── Recurrence ────────────────────────────────────────────────────────
-    "contact_regions_particle":             "N_reg (exact)",
-    "contact_region_recurrence_particle":   "R_rec (exact)",
-    "contact_regions_fixed":                "N_reg (fixed bin)",
-    "contact_region_recurrence_fixed":      "R_rec (fixed bin)",
-    "contact_regions_repeat":               "N_reg (repeat unit)",
-    "contact_region_recurrence_repeat":     "R_rec (repeat unit)",
-    "contact_regions_repeat_window":        "N_reg (repeat window)",
-    "contact_region_recurrence_repeat_window": "R_rec (repeat window)",
-    "molecule_contact_recurrence_window":     "rec_mol",
+    required_cols = [*id_cols, "cluster_size", "frac_mols"]
+    missing_cols = [col for col in required_cols if col not in cdf.columns]
 
-    # ── Cluster / phase fractions ─────────────────────────────────────────
-    "mono_frac":                            "f_mono",
-    "oligo_frac":                           "f_oligo",
-    "drop_frac":                            "f_droplet",
-    "largest_cluster":                      "largest cluster",
-    "n_clusters":                           "N_clusters",
-}
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+
+    df = cdf.copy()
+
+    df["cluster_bin"] = pd.cut(
+        df["cluster_size"],
+        bins=bin_edges,
+        labels=bin_labels,
+    )
+
+    if df["cluster_bin"].isna().any():
+        bad_sizes = sorted(df.loc[df["cluster_bin"].isna(), "cluster_size"].unique())
+        raise ValueError(f"Some cluster sizes were not assigned to bins: {bad_sizes}")
+
+    binned = (
+        df.groupby(
+            [*id_cols, "cluster_bin"],
+            observed=True,
+            as_index=False,
+        )
+        .agg(frac_mols=("frac_mols", "sum"))
+    )
+
+    wide = (
+        binned.pivot_table(
+            index=id_cols,
+            columns="cluster_bin",
+            values="frac_mols",
+            fill_value=0,
+            observed=True,
+        )
+        .reset_index()
+    )
+
+    for label in bin_labels:
+        if label not in wide.columns:
+            wide[label] = 0.0
+
+    wide = wide[id_cols + bin_labels]
+
+    frac_sum = wide[bin_labels].sum(axis=1)
+    if not np.allclose(frac_sum, 1.0):
+        bad = frac_sum.loc[~np.isclose(frac_sum, 1.0)]
+        raise ValueError(
+            f"Binned fractions do not sum to 1 for {len(bad)} rows. "
+            f"Example sums: {bad.head().tolist()}"
+        )
+
+    return wide
+
+def plot_stacked_replicate_bars_fraction(
+    df,
+    ax,
+    y_cols,
+    x_col,
+    group_col,
+    style,
+    label_map=LABEL_MAP,
+):
+    required_cols = [x_col, group_col] + y_cols
+
+    for col in required_cols:
+        if col not in df.columns:
+            raise ValueError(f"Missing column: {col}")
+
+    x_values = sorted(df[x_col].dropna().unique())
+    x_map = {value: i for i, value in enumerate(x_values)}
+
+    groups = sorted(df[group_col].dropna().unique())
+    n_groups = len(groups)
+
+    bar_width = 0.75 / max(n_groups, 1)
+
+    for j, group_value in enumerate(groups):
+        d_group = df[df[group_col] == group_value].sort_values(x_col)
+
+        x = d_group[x_col].map(x_map).to_numpy(dtype=float)
+        x = x - 0.375 + (j + 0.5) * bar_width
+
+        bottom = np.zeros(len(d_group))
+
+        for i, col in enumerate(y_cols):
+            label = get_label(col, label_map) if j == 0 else None
+
+            ax.bar(
+                x,
+                d_group[col].to_numpy(),
+                bottom=bottom,
+                width=bar_width,
+                color=style.stack_colors[i],
+                alpha=style.stack_alpha,
+                label=label,
+                linewidth=0,
+            )
+
+            bottom += d_group[col].to_numpy()
+
+    ax.set_xticks(range(len(x_values)))
+    ax.set_xticklabels([f"{x:g}" for x in x_values])
+
+    ax.set_xlabel(get_label(x_col, label_map))
+    ax.set_ylabel("Fraction")
+    ax.set_ylim(0, 1)
+
+    if style.show_grid:
+        ax.grid(True, axis="y", alpha=style.grid_alpha)
+
+    return ax
+
+
 
 
 def get_label(col: str, label_map: dict[str, str] | None = LABEL_MAP) -> str:
@@ -359,7 +512,6 @@ def get_label(col: str, label_map: dict[str, str] | None = LABEL_MAP) -> str:
 # PLOTS
 # ============================================================================
 
-
 @dataclass
 class PlotStyle:
     # Global
@@ -374,12 +526,20 @@ class PlotStyle:
     jitter: float = 0.04
 
     # Stacked area
-    stack_alpha: float = 0.35
-    stack_colors: tuple[str, ...] = ("#1f77b4", "#ff7f0e", "#2ca02c")
+    stack_alpha: float = 0.25
+    stack_colors: tuple[str, ...] = (
+        "#2166ac",  # mono
+        "#67a9cf",  # di
+        "#d1e5f0",  # tri
+        "#fff176",  # 4-9
+        "#fddbc7",  # 10-19
+        "#f4a582",  # 20-49
+        "#b2182b",  # 50+
+    )
 
     # Lines + replicate bands
     mean_lw: float = 2.0
-    rep_lw: float = 0.8          # thin replicate lines
+    rep_lw: float = 0.8
     rep_alpha: float = 0.25
     band_alpha: float = 0.2
 
@@ -652,6 +812,9 @@ def plot_stacked_replicates_fraction(
         if col not in df.columns:
             raise ValueError(f"Missing column: {col}")
 
+    x_values = sorted(df[x_col].dropna().unique())
+    x_map = {value: i for i, value in enumerate(x_values)}
+
     replicates = sorted(df[group_col].dropna().unique())
 
     for i, rep in enumerate(replicates):
@@ -660,6 +823,8 @@ def plot_stacked_replicates_fraction(
             .sort_values(x_col)
         )
 
+        x = df_rep[x_col].map(x_map).to_numpy()
+
         labels = (
             [get_label(col, label_map) for col in y_cols]
             if i == 0
@@ -667,12 +832,15 @@ def plot_stacked_replicates_fraction(
         )
 
         ax.stackplot(
-            df_rep[x_col],
+            x,
             *[df_rep[col] for col in y_cols],
             labels=labels,
             alpha=style.stack_alpha,
             colors=style.stack_colors[:len(y_cols)],
         )
+
+    ax.set_xticks(range(len(x_values)))
+    ax.set_xticklabels([f"{x:g}" for x in x_values])
 
     ax.set_xlabel(get_label(x_col, label_map))
     ax.set_ylabel("Fraction")
@@ -681,11 +849,11 @@ def plot_stacked_replicates_fraction(
     if style.show_grid:
         ax.grid(True, alpha=style.grid_alpha)
 
-    ax.legend(
-        title=f"n = {len(replicates)}",
-        loc="upper right",
-    )
-
+    # ax.legend(
+    #     title=f"n = {len(replicates)}",
+    #     loc="upper right",
+    # )
+    print(f"Replicates n = {len(replicates)}")
     return ax
 
 # LINE PLOT
