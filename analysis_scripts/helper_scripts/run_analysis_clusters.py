@@ -19,6 +19,68 @@ from analysis_scripts.phase_separation import (
 
 BASE_DIR = analysis_functions_dir / "bulk" / "output_dir"
 
+def add_homogeneous_material_columns(
+    df: pd.DataFrame,
+    n_molecules_total: int,
+    n_particles_total: int,
+) -> pd.DataFrame:
+    """Add material-normalized cluster columns for homogeneous molecule-length systems.
+
+    Assumes all molecules in this run have the same number of particles.
+    """
+    if n_molecules_total <= 0:
+        raise ValueError("n_molecules_total must be > 0.")
+
+    if n_particles_total <= 0:
+        raise ValueError("n_particles_total must be > 0.")
+
+    if n_particles_total % n_molecules_total != 0:
+        raise ValueError(
+            "n_particles_total is not divisible by n_molecules_total. "
+            "This script only supports homogeneous molecule-length systems."
+        )
+
+    df = df.copy()
+
+    mol_len = n_particles_total // n_molecules_total
+
+    df["mol_len"] = int(mol_len)
+    df["n_molecules_total"] = int(n_molecules_total)
+    df["n_particles_total"] = int(n_particles_total)
+
+    df["one_cluster_mol_frac"] = (
+        df["cluster_size"] / df["n_molecules_total"]
+    )
+
+    df["one_cluster_particle_count"] = (
+        df["cluster_size"] * df["mol_len"]
+    )
+
+    df["one_cluster_particle_frac"] = (
+        df["one_cluster_particle_count"] / df["n_particles_total"]
+    )
+
+    df["n_particles_in_clusters"] = (
+        df["n_mols_in_clusters"] * df["mol_len"]
+    )
+
+    df["frac_particles"] = (
+        df["n_particles_in_clusters"] / df["n_particles_total"]
+    )
+
+    df["mass_weighted_cluster_score_contrib"] = (
+        df["n_clusters"] * df["one_cluster_particle_frac"] ** 2
+    )
+
+    df["mass_weighted_size_contrib_mol"] = (
+        df["frac_particles"] * df["cluster_size"]
+    )
+
+    df["mass_weighted_size_contrib_particle"] = (
+        df["frac_particles"] * df["one_cluster_particle_count"]
+    )
+
+    return df
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -33,7 +95,7 @@ def main() -> None:
     parser.add_argument(
         "--min_contacts",
         type=int,
-        default=1,
+        default=2,
         help="Minimum molecule-pair contacts required for an edge.",
     )
 
@@ -99,6 +161,8 @@ def main() -> None:
             print(f"Processing {edge_npz_path}")
 
             with np.load(edge_npz_path) as edge_npz:
+                n_molecules_total = int(edge_npz["n_molecules"][0])
+
                 rows = component_size_distribution_rows_from_edge_npz(
                     edge_npz=edge_npz,
                     min_contacts=args.min_contacts,
@@ -117,7 +181,7 @@ def main() -> None:
             traj_path = run_dir / f"{traj_stem}.gsd"
 
             with as_traj(traj_path) as traj:
-                frame_idx = df["frame"].to_numpy(dtype=int)
+                n_particles_total = int(traj[0].particles.N)
 
                 steps_by_frame = {
                     int(frame): int(traj[int(frame)].configuration.step)
@@ -126,6 +190,12 @@ def main() -> None:
 
             df["step"] = df["frame"].map(steps_by_frame)
 
+            df = add_homogeneous_material_columns(
+                df=df,
+                n_molecules_total=n_molecules_total,
+                n_particles_total=n_particles_total,
+            )
+
             run_number = run_dir.name.split("_", 1)[0]
             traj_id = traj_stem.replace("trajectory_", "traj_")
 
@@ -133,9 +203,12 @@ def main() -> None:
             df["folder_name"] = run_dir.name
             df["traj_replicate"] = traj_stem
 
-            df["E_att"] = read_param(run_dir / "params.json", "E_att")
-            df["angle_k_ppp"] = read_param(run_dir / "params.json", "angle_k_ppp")
-            df["density"] = read_param(run_dir / "params.json", "density")
+            params_path = run_dir / "params.json"
+
+            df["E_att"] = read_param(params_path, "E_att")
+            df["angle_k_ppp"] = read_param(params_path, "angle_k_ppp")
+            df["density"] = read_param(params_path, "density")
+            df["molecule_file"] = read_param(params_path, "molecule_file")
 
             # Keep the most useful columns first.
             first_cols = [
@@ -147,11 +220,27 @@ def main() -> None:
                 "E_att",
                 "angle_k_ppp",
                 "density",
+                "molecule_file",
                 "min_contacts",
+
+                "mol_len",
+                "n_molecules_total",
+                "n_particles_total",
+
                 "cluster_size",
                 "n_clusters",
                 "n_mols_in_clusters",
                 "frac_mols",
+
+                "one_cluster_mol_frac",
+                "one_cluster_particle_count",
+                "one_cluster_particle_frac",
+                "n_particles_in_clusters",
+                "frac_particles",
+
+                "mass_weighted_cluster_score_contrib",
+                "mass_weighted_size_contrib_mol",
+                "mass_weighted_size_contrib_particle",
             ]
 
             other_cols = [col for col in df.columns if col not in first_cols]

@@ -19,7 +19,10 @@ from analysis_scripts.phase_separation import (
     calc_end_to_end_from_positions,
     get_log_KE_over_time,
     get_energy_terms,
+    build_framewise_mfe_df,
+    load_mfe_pairs_csv
 )
+
 
 
 BASE_DIR = analysis_functions_dir / "bulk" / "output_dir"
@@ -154,7 +157,6 @@ def build_traj_metric_df(
 
     return pd.DataFrame(rows)
 
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Build per-trajectory framewise single-molecule CSVs from pairing .npz files."
@@ -206,6 +208,18 @@ def main() -> None:
         default=None,
         help="Optional numeric folder prefixes to process, e.g. 251 252 253.",
     )
+    parser.add_argument(
+    "--mfe_input_csv",
+    default="duplex_mfe.csv",
+    help="MFE pair CSV inside the sweep directory.",
+    )
+
+    parser.add_argument(
+        "--pair_index_offset",
+        type=int,
+        default=1,
+        help="Offset added to sim indices for MFE/ViennaRNA calcs. Use 1 for 0-indexed simulation data, 0 if already 1-indexed.",
+    )
 
     args = parser.parse_args()
 
@@ -235,6 +249,10 @@ def main() -> None:
     n_done = 0
     n_failed = 0
     all_dfs = []
+    mfe_csv = sweep_path / args.mfe_input_csv
+    if not mfe_csv.is_file():
+        raise FileNotFoundError(f"MFE CSV not found: {mfe_csv}")
+    mfe_pairs = load_mfe_pairs_csv(mfe_csv)
 
     for npz_path in npz_paths:
         run_dir = npz_path.parent.parent.parent
@@ -254,6 +272,14 @@ def main() -> None:
                 repeat_size=args.repeat_size,
                 repeat_window=args.repeat_window,
             )
+            # Add ViennaRNA MFE calculations
+            df_mfe = build_framewise_mfe_df(
+                nlist_dict=data,
+                mfe_pairs=mfe_pairs,
+                offset=args.pair_index_offset,
+            )
+
+            df_contacts = df_contacts.merge(df_mfe, on="frame", how="left")
             # add error rate
             df_err = pd.DataFrame({
                 "frame": data["frame_indices"],
@@ -313,7 +339,8 @@ def main() -> None:
                 "angle_k_ppp",
             )
             df["density"] = read_param(run_dir / "params.json", "density")
-
+            df["mfe_input_csv"] = args.mfe_input_csv
+            df["pair_index_offset"] = args.pair_index_offset
             df.to_csv(out_csv, index=False)
             all_dfs.append(df)
 

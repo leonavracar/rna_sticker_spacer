@@ -23,11 +23,12 @@ LABEL_MAP = {
     "step":                 "Simulation Step",
     "frame":                "Frame",
     "time":                 "Time",
+    "rna" : "RNA", # added column in processing of some dfs
 
     # ── Simulation parameters ─────────────────────────────────────────────
-    "E_att":                "E_att",
-    "angle_k_ppp":          "Chain Stiffness",
-    "density":              "ρ",
+    "angle_k_ppp": r"$k_{\mathrm{bbb}}$",
+    "E_att": r"$E_{\mathrm{att}}$",
+    "density":              r"$\rho$",
     "molecule_file":        "RNA",
 
     # ── Logged simulation quantities ──────────────────────────────────────
@@ -49,15 +50,16 @@ LABEL_MAP = {
     "intra_frac":                           "f_intra",
 
     # ── Recurrence ────────────────────────────────────────────────────────
-    "contact_regions_particle":             "N_reg (exact)",
-    "contact_region_recurrence_particle":   "R_rec (exact)",
-    "contact_regions_fixed":                "N_reg (fixed bin)",
-    "contact_region_recurrence_fixed":      "R_rec (fixed bin)",
-    "contact_regions_repeat":               "N_reg (repeat unit)",
-    "contact_region_recurrence_repeat":     "R_rec (repeat unit)",
-    "contact_regions_repeat_window":        "N_reg (repeat window)",
-    "contact_region_recurrence_repeat_window": "R_rec (repeat window)",
-    "molecule_contact_recurrence_window":     "rec_mol",
+    # "contact_regions_particle":             "N_reg (exact)",
+    # "contact_region_recurrence_particle":   "R_rec (exact)",
+    # "contact_regions_fixed":                "N_reg (fixed bin)",
+    # "contact_region_recurrence_fixed":      "R_rec (fixed bin)",
+    # "contact_regions_repeat":               "N_reg (repeat unit)",
+    # "contact_region_recurrence_repeat":     "R_rec (repeat unit)",
+    # "contact_regions_repeat_window":        "N_reg (repeat window)",
+    # "contact_region_recurrence_repeat_window": "R_rec (repeat window)",
+    "molecule_contact_recurrence_window":     "recurrence (mol)",
+    "particle_contact_recurrence_window":     "recurrence (particle)",
 
     # ── Cluster / phase fractions ─────────────────────────────────────────
     "mono_frac":                            "f_mono",
@@ -76,7 +78,6 @@ LABEL_MAP = {
 # ============================================================================
 
 VALIDATION_ROOT = Path("/groups/goloborodko/projects/leona/validation")
-
 
 def setup_validation_paths(sweep_dir_name: str) -> dict[str, Path]:
     """
@@ -102,6 +103,7 @@ def setup_validation_paths(sweep_dir_name: str) -> dict[str, Path]:
         "analysis_per_replicate_csv": sweep_dir / "analysis_per_replicate.csv",
         "error_rate": sweep_dir / "analysis_error_rate.csv",
         "clusters": sweep_dir / "analysis_clusters.csv",
+        "graph": sweep_dir / "graph_framewise_summary.csv",
     }
 
 def setup_npz_mp_paths(sweep_dir:str, run_dir_num:str, rep_num:int = 0) -> dict[str, Path]:
@@ -362,6 +364,7 @@ CLUSTER_ID_COLS = [
     "angle_k_ppp",
     "density",
     "min_contacts",
+    "molecule_file"
 ]
 
 
@@ -482,7 +485,10 @@ def plot_stacked_replicate_bars_fraction(
             bottom += d_group[col].to_numpy()
 
     ax.set_xticks(range(len(x_values)))
-    ax.set_xticklabels([f"{x:g}" for x in x_values])
+    ax.set_xticklabels([
+    f"{x:g}" if isinstance(x, (int, float, np.integer, np.floating)) else str(x)
+    for x in x_values
+    ])
 
     ax.set_xlabel(get_label(x_col, label_map))
     ax.set_ylabel("Fraction")
@@ -493,9 +499,6 @@ def plot_stacked_replicate_bars_fraction(
 
     return ax
 
-
-
-
 def get_label(col: str, label_map: dict[str, str] | None = LABEL_MAP) -> str:
     """
     Return a display label for a column name.
@@ -505,12 +508,53 @@ def get_label(col: str, label_map: dict[str, str] | None = LABEL_MAP) -> str:
 
     return label_map.get(col, col)
 
-
-
-
 # ============================================================================
 # PLOTS
 # ============================================================================
+
+STATE_BIN_LABELS = [
+    "mono",
+    "di",
+    "tri",
+    "4-9",
+    "10-49",
+    "50+",
+]
+
+STATE_BIN_EDGES = [0, 1, 2, 3, 9, 49, np.inf]
+
+STATE_BIN_COLORS = (
+    "#2166ac",  # mono
+    "#67a9cf",  # di
+    "#d1e5f0",  # tri
+    "#fff176",  # 4-9
+    "#f4a582",  # 10-49
+    "#b2182b",  # 50+
+)
+
+
+TIME_BIN_LABELS = [
+    "mono",
+    "di",
+    "tri",
+    "4-9",
+    "10-19",
+    "20-49",
+    "50+",
+]
+
+TIME_BIN_EDGES = [0, 1, 2, 3, 9, 19, 49, np.inf]
+
+TIME_BIN_COLORS = (
+    "#2166ac",  # mono
+    "#67a9cf",  # di
+    "#d1e5f0",  # tri
+    "#fff176",  # 4-9
+    "#f4a582",  # 10-19
+    "#d6604d",  # 20-49
+    "#b2182b",  # 50+
+)
+
 
 @dataclass
 class PlotStyle:
@@ -520,6 +564,15 @@ class PlotStyle:
     grid_alpha: float = 0.25
     legend_loc: str = "best"
 
+    # Text
+    font_size: float = 10
+    title_size: float = 14
+    panel_title_size: float = 12
+    label_size: float = 11
+    tick_size: float = 10
+    legend_size: float = 10
+    legend_title_size: float = 10
+
     # Scatter
     alpha: float = 0.4
     point_size: float = 8
@@ -527,21 +580,25 @@ class PlotStyle:
 
     # Stacked area
     stack_alpha: float = 0.25
-    stack_colors: tuple[str, ...] = (
-        "#2166ac",  # mono
-        "#67a9cf",  # di
-        "#d1e5f0",  # tri
-        "#fff176",  # 4-9
-        "#fddbc7",  # 10-19
-        "#f4a582",  # 20-49
-        "#b2182b",  # 50+
-    )
+    stack_colors: tuple[str, ...] = TIME_BIN_COLORS
 
     # Lines + replicate bands
     mean_lw: float = 2.0
     rep_lw: float = 0.8
     rep_alpha: float = 0.25
     band_alpha: float = 0.2
+
+    def mpl_rc(self) -> dict[str, Any]:
+        return {
+            "font.size": self.font_size,
+            "axes.titlesize": self.panel_title_size,
+            "axes.labelsize": self.label_size,
+            "xtick.labelsize": self.tick_size,
+            "ytick.labelsize": self.tick_size,
+            "legend.fontsize": self.legend_size,
+            "legend.title_fontsize": self.legend_title_size,
+            "figure.titlesize": self.title_size,
+        }
 
 def make_panel_plot_fn(
     plot_fn: Callable[..., Any],
@@ -854,6 +911,44 @@ def plot_stacked_replicates_fraction(
     #     loc="upper right",
     # )
     print(f"Replicates n = {len(replicates)}")
+    return ax
+
+
+def plot_stacked_replicates_over_time(
+    df: pd.DataFrame,
+    ax: plt.Axes,
+    y_cols: list[str],
+    x_col: str,
+    group_col: str,
+    style: PlotStyle,
+    x_scale: float = 1e6,
+    label_map: dict[str, str] | None = LABEL_MAP,
+) -> plt.Axes:
+    required_cols = [x_col, group_col, *y_cols]
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing columns: {missing_cols}")
+
+    for i, (_, d_rep) in enumerate(df.groupby(group_col)):
+        d_rep = d_rep.sort_values(x_col)
+
+        labels = y_cols if i == 0 else [None] * len(y_cols)
+
+        ax.stackplot(
+            d_rep[x_col] / x_scale,
+            *[d_rep[col] for col in y_cols],
+            colors=style.stack_colors[:len(y_cols)],
+            alpha=style.stack_alpha,
+            labels=labels,
+        )
+
+    ax.set_xlabel("Simulation step (×10⁶)")
+    ax.set_ylabel("Fraction")
+    ax.set_ylim(0, 1)
+
+    if style.show_grid:
+        ax.grid(True, alpha=style.grid_alpha)
+
     return ax
 
 # LINE PLOT

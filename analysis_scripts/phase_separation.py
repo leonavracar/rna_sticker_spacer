@@ -11,7 +11,7 @@ import plotly.graph_objects as go
 from scipy.signal import find_peaks
 from collections import deque
 from collections.abc import Iterable
-import os
+from pathlib import Path
 
 # ============================================================================
 # PAIRING ANALYSIS: Single nucleotide model
@@ -294,8 +294,6 @@ def transform_and_filter_counter_to_dict(molecule_edges_counter: Counter, min_co
 # ============================================================================
 # Mono/Oligo/Droplet-mer analysis
 # ============================================================================
-
-
 
 def get_cluster_sizes_from_array(
     qi: np.ndarray,
@@ -1038,7 +1036,9 @@ def instantaneous_frame_metrics_from_array(
     min_intermol_bonds: int = 2,
 ) -> dict[str, float | int]:
     """Compute instantaneous clustering/contact metrics for one frame."""
-    n_molecules = int(molecule_id[-1]) + 1
+    n_molecules = int(np.max(molecule_id)) + 1
+    n_particles = int(len(molecule_id))
+
     pair_counts = count_molecule_contacts_from_array(qi, pi, molecule_id)
     qualifying_pairs = filt_molecule_contacts_in_frame(
         pair_counts, min_intermol_bonds=min_intermol_bonds
@@ -1048,7 +1048,7 @@ def instantaneous_frame_metrics_from_array(
     )
     summary = summarize_cluster_sizes(cluster_sizes)
 
-    total_contacts = len(qi)
+    total_contacts = int(len(qi))
     mol_i = molecule_id[qi]
     mol_j = molecule_id[pi]
     inter = int(np.sum(mol_i != mol_j))
@@ -1056,9 +1056,32 @@ def instantaneous_frame_metrics_from_array(
 
     summary.update(
         {
+            "n_particles_total": n_particles,
+            "n_molecules_total": n_molecules,
+            "mol_len": n_particles / n_molecules,
             "particle_contacts": total_contacts,
+            "inter_contacts": inter,
+            "intra_contacts": intra,
+
+            "per_particle_contacts_total": (
+                total_contacts / n_particles
+                if n_particles > 0 else np.nan
+            ),
+            "per_particle_contacts_inter": (
+                inter / n_particles
+                if n_particles > 0 else np.nan
+            ),
+            "per_particle_contacts_intra": (
+                intra / n_particles
+                if n_particles > 0 else np.nan
+            ),
+            # raw and qualifying (n_pairs >=2 to count as an edge)
+            "n_molecule_pairs_raw": len(pair_counts),
+            "n_molecule_pairs_qualifying": len(qualifying_pairs),
+            # distinct and qualifying only kept for compatibility with old notebooks
             "distinct_molecule_pairs": len(pair_counts),
             "qualifying_molecule_pairs": len(qualifying_pairs),
+            # fractions
             "inter_frac": inter / total_contacts if total_contacts > 0 else 0.0,
             "intra_frac": intra / total_contacts if total_contacts > 0 else 0.0,
         }
@@ -1334,6 +1357,7 @@ def single_chain_frame_metrics_from_array(
     bin_size: int = 5,
     repeat_size: int = 3,
     repeat_window: int = 3,
+
 ) -> tuple[dict[str, float | int], set[tuple[int, int]]]:
     """
     Compute single-chain contact metrics for one frame.
@@ -1350,6 +1374,7 @@ def single_chain_frame_metrics_from_array(
     row = {
         "particle_contacts": int(len(qi)),
         "contact_regions": int(len(contact_regions)),
+
     }
 
     return row, contact_regions
@@ -1399,6 +1424,218 @@ def framewise_single_chain_rows_from_nlist_dict(
 
     return rows
 
+# MFE (ViennaRNA comparisons)
+
+def load_mfe_pairs_csv(mfe_csv: Path) -> set[tuple[int, int]]:
+    """
+    Load ViennaRNA MFE base pairs from CSV.
+
+    Expected columns:i, j
+    """
+    mfe_df = pd.read_csv(mfe_csv)
+
+    if {"i", "j"}.issubset(mfe_df.columns):
+        i_col, j_col = "i", "j"
+    else:
+        raise ValueError(
+            f"MFE CSV must contain i/j columns. "
+            f"Found columns: {list(mfe_df.columns)}"
+        )
+
+    return {
+        tuple(sorted((int(row[i_col]), int(row[j_col]))))
+        for _, row in mfe_df.iterrows()
+    }
+
+def calc_mfe_matches(
+    sim_pairs: set[tuple[int, int]],
+    mfe_pairs: set[tuple[int, int]],
+) -> int:
+    """
+    Count how many simulated base pairs match the ViennaRNA MFE base pairs.
+
+    Parameters
+    ----------
+    sim_pairs
+        Set of simulated base pairs for one frame.
+    mfe_pairs
+        Set of ViennaRNA MFE base pairs.
+
+    Returns
+    -------
+    int
+        Number of simulated pairs that are also present in the MFE structure.
+    """
+    return len(mfe_pairs.intersection(sim_pairs))
+
+
+def calc_mfe_recall(
+    mfe_matches: int,
+    mfe_pairs_len: int,
+) -> float:
+    """
+    Calculate the fraction of ViennaRNA MFE pairs recovered in one frame.
+
+    Returns 0.0 if the MFE pair set is empty.
+    """
+    return mfe_matches / mfe_pairs_len if mfe_pairs_len > 0 else 0.0
+
+
+def calc_precision(
+    mfe_matches: int,
+    sim_pairs_len: int,
+) -> float:
+    """
+    Calculate the fraction of simulated pairs that match ViennaRNA MFE pairs.
+
+    Returns 0.0 if the simulated frame has no base pairs.
+    """
+    return mfe_matches / sim_pairs_len if sim_pairs_len > 0 else 0.0
+
+
+def calc_f1_score(
+    precision: float,
+    mfe_recall: float,
+) -> float:
+    """
+    Calculate the F1 score from precision and MFE recall.
+
+    Returns 0.0 if both precision and recall are zero.
+    """
+    denom = precision + mfe_recall
+    return (2 * precision * mfe_recall) / denom if denom > 0 else 0.0
+
+
+def calc_bp_distance(
+    sim_pairs: set[tuple[int, int]],
+    mfe_pairs: set[tuple[int, int]],
+) -> int:
+    """
+    Calculate base-pair distance between simulated and MFE pair sets.
+
+    This is the number of missing MFE pairs plus the number of extra simulated
+    pairs relative to the MFE structure.
+    """
+    return len(mfe_pairs - sim_pairs) + len(sim_pairs - mfe_pairs)
+
+
+def convert_nlist_to_idx_one_set(
+    qi: np.ndarray,
+    pi: np.ndarray,
+    offset: int = 1,
+) -> set[tuple[int, int]]:
+    """
+    Convert paired-index arrays from one frame into a normalized pair set.
+
+    Parameters
+    ----------
+    qi, pi
+        Arrays containing paired particle/base indices.
+    offset
+        Value added to each index. Use offset=1 to convert 0-indexed
+        simulation output to ViennaRNA's 1-indexed nucleotide numbering.
+        Use offset=0 if the simulation output is already 1-indexed.
+
+    Returns
+    -------
+    set[tuple[int, int]]
+        Set of normalized base pairs with lower index first.
+    """
+    return {
+        tuple(sorted((int(i) + offset, int(j) + offset)))
+        for i, j in zip(qi, pi)
+        if int(i) != int(j)
+    }
+
+
+def calc_framewise_mfe_metrics(
+    sim_pairs: set[tuple[int, int]],
+    mfe_pairs: set[tuple[int, int]],
+) -> dict[str, float | int]:
+    """
+    Calculate framewise agreement metrics against the ViennaRNA MFE structure.
+
+    Parameters
+    ----------
+    sim_pairs
+        Simulated base-pair set for one frame.
+    mfe_pairs
+        ViennaRNA MFE base-pair set.
+
+    Returns
+    -------
+    dict[str, float | int]
+        Frame-level MFE comparison metrics.
+    """
+    sim_pairs_len = len(sim_pairs)
+    mfe_pairs_len = len(mfe_pairs)
+
+    mfe_matches = calc_mfe_matches(sim_pairs, mfe_pairs)
+    mfe_recall = calc_mfe_recall(mfe_matches, mfe_pairs_len)
+    precision = calc_precision(mfe_matches, sim_pairs_len)
+    f1_score = calc_f1_score(precision, mfe_recall)
+    bp_distance = calc_bp_distance(sim_pairs, mfe_pairs)
+
+    return {
+        "n_sim_pairs": sim_pairs_len,
+        "n_mfe_pairs": mfe_pairs_len,
+        "mfe_matches": mfe_matches,
+        "mfe_recall": mfe_recall,
+        "mfe_precision": precision,
+        "mfe_f1_score": f1_score,
+        "mfe_bp_distance": bp_distance,
+    }
+
+
+def build_framewise_mfe_df(
+    nlist_dict: dict[str, np.ndarray],
+    mfe_pairs: set[tuple[int, int]],
+    offset: int = 1,
+) -> pd.DataFrame:
+    """
+    Build a framewise MFE comparison dataframe from pairing arrays.
+
+    Parameters
+    ----------
+    nlist_dict
+        Dictionary loaded from a pairing .npz file. Expected keys include
+        frame_indices and per-frame qi_<frame>, pi_<frame> arrays.
+    mfe_pairs
+        ViennaRNA MFE base-pair set.
+    offset
+        Index offset applied to simulated indices before comparison.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with one row per frame and MFE comparison metrics.
+    """
+    rows = []
+
+    for frame_idx in nlist_dict["frame_indices"]:
+        frame_idx = int(frame_idx)
+
+        qi = nlist_dict[f"qi_{frame_idx}"]
+        pi = nlist_dict[f"pi_{frame_idx}"]
+
+        sim_pairs = convert_nlist_to_idx_one_set(
+            qi=qi,
+            pi=pi,
+            offset=offset,
+        )
+
+        row = {"frame": frame_idx}
+        row.update(
+            calc_framewise_mfe_metrics(
+                sim_pairs=sim_pairs,
+                mfe_pairs=mfe_pairs,
+            )
+        )
+
+        rows.append(row)
+
+    return pd.DataFrame(rows)
+
 # ============================================================================
 # MULTIPLE MOLECULES: Recurrence/contact metrics
 # ============================================================================
@@ -1423,10 +1660,17 @@ def framewise_molecule_recurrence_rows_from_nlist_dict(
     min_intermol_bonds: int = 1,
 ) -> list[dict[str, float | int]]:
     """
-    Build framewise molecule-contact recurrence rows.
+    Build framewise molecule-contact and particle-contact recurrence rows.
+
+    Molecule recurrence asks whether the same molecule pairs recur.
+    Particle recurrence asks whether the same particle-particle contacts recur.
     """
     rows = []
-    recent_contact_sets: deque[set[tuple[int, int]]] = deque(
+
+    recent_molecule_contact_sets: deque[set[tuple[int, int]]] = deque(
+        maxlen=recurrence_window
+    )
+    recent_particle_contact_sets: deque[set[tuple[int, int]]] = deque(
         maxlen=recurrence_window
     )
 
@@ -1447,13 +1691,36 @@ def framewise_molecule_recurrence_rows_from_nlist_dict(
             min_intermol_bonds=min_intermol_bonds,
         )
 
-        recent_contact_sets.append(molecule_contacts)
+        particle_contacts = set()
+
+        for q, p in zip(qi, pi):
+            q = int(q)
+            p = int(p)
+
+            mol_q = int(molecule_id[q])
+            mol_p = int(molecule_id[p])
+
+            if mol_q == mol_p:
+                continue
+
+            mol_pair = (min(mol_q, mol_p), max(mol_q, mol_p))
+
+            if pair_counts[mol_pair] < min_intermol_bonds:
+                continue
+
+            particle_contacts.add((min(q, p), max(q, p)))
+
+        recent_molecule_contact_sets.append(molecule_contacts)
+        recent_particle_contact_sets.append(particle_contacts)
 
         rows.append(
             {
                 "frame": frame_idx,
                 "molecule_contact_recurrence_window": recurrence_from_contact_sets(
-                    recent_contact_sets
+                    recent_molecule_contact_sets
+                ),
+                "particle_contact_recurrence_window": recurrence_from_contact_sets(
+                    recent_particle_contact_sets
                 ),
             }
         )
@@ -1778,3 +2045,132 @@ def make_summary_figure(
     )
     fig.update_annotations(font_size=11)
     return fig
+
+# Molecule graph (new)
+
+def _edge_strength_summary(
+    contacts: np.ndarray,
+    suffix: str,
+) -> dict[str, float | int]:
+    """Summarize molecule-edge strengths for one frame."""
+    if len(contacts) == 0:
+        return {
+            f"edge_strength_mean_{suffix}": 0.0,
+            f"edge_strength_q90_{suffix}": 0.0,
+            f"edge_strength_max_{suffix}": 0.0,
+            f"total_particle_contacts_{suffix}": 0,
+        }
+
+    return {
+        f"edge_strength_mean_{suffix}": float(np.mean(contacts)),
+        f"edge_strength_q90_{suffix}": float(np.percentile(contacts, 90)),
+        f"edge_strength_max_{suffix}": int(np.max(contacts)),
+        f"total_particle_contacts_{suffix}": int(np.sum(contacts)),
+    }
+
+
+def graph_framewise_summary_rows_from_edge_npz(
+    edge_npz: np.lib.npyio.NpzFile,
+    n_particles_total: int,
+    min_contacts: int = 1,
+) -> list[dict[str, float | int]]:
+    """Build framewise molecule-graph summary rows from molecule-edge NPZ.
+
+    Row meaning:
+        one row = one trajectory frame
+
+    Raw edges:
+        molecule pairs with at least one particle-level contact
+
+    Qualifying edges:
+        molecule pairs with n_contacts >= min_contacts
+    """
+    n_molecules_total = int(edge_npz["n_molecules"][0])
+    frame_indices = edge_npz["frame_indices"].astype(np.int64)
+
+    frame = edge_npz["frame"].astype(np.int64)
+    n_contacts = edge_npz["n_contacts"].astype(np.int64)
+
+    possible_molecule_pairs = (
+        n_molecules_total * (n_molecules_total - 1) / 2
+    )
+
+    order = np.argsort(frame)
+    frame_sorted = frame[order]
+    contacts_sorted = n_contacts[order]
+
+    unique_frames, starts, counts = np.unique(
+        frame_sorted,
+        return_index=True,
+        return_counts=True,
+    )
+
+    contacts_by_frame = {
+        int(frame_idx): contacts_sorted[int(start): int(start + count)]
+        for frame_idx, start, count in zip(unique_frames, starts, counts)
+    }
+
+    rows = []
+
+    for frame_idx in frame_indices:
+        frame_idx = int(frame_idx)
+
+        raw_contacts = contacts_by_frame.get(
+            frame_idx,
+            np.array([], dtype=np.int64),
+        )
+        qualifying_contacts = raw_contacts[raw_contacts >= min_contacts]
+
+        n_molecule_pairs_raw = int(len(raw_contacts))
+        n_molecule_pairs_qualifying = int(len(qualifying_contacts))
+
+        total_particle_contacts_raw = int(np.sum(raw_contacts))
+        total_particle_contacts_qualifying = int(np.sum(qualifying_contacts))
+
+        row = {
+            "frame": frame_idx,
+            "n_molecules_total": n_molecules_total,
+            "n_particles_total": int(n_particles_total),
+            "min_contacts": int(min_contacts),
+            "possible_molecule_pairs": possible_molecule_pairs,
+            "n_molecule_pairs_raw": n_molecule_pairs_raw,
+            "n_molecule_pairs_qualifying": n_molecule_pairs_qualifying,
+            "edge_density_raw": (
+                n_molecule_pairs_raw / possible_molecule_pairs
+                if possible_molecule_pairs > 0
+                else np.nan
+            ),
+            "edge_density_qualifying": (
+                n_molecule_pairs_qualifying / possible_molecule_pairs
+                if possible_molecule_pairs > 0
+                else np.nan
+            ),
+            "mean_degree_raw": (
+                2 * n_molecule_pairs_raw / n_molecules_total
+                if n_molecules_total > 0
+                else np.nan
+            ),
+            "mean_degree_qualifying": (
+                2 * n_molecule_pairs_qualifying / n_molecules_total
+                if n_molecules_total > 0
+                else np.nan
+            ),
+        }
+
+        row.update(_edge_strength_summary(raw_contacts, "raw"))
+        row.update(_edge_strength_summary(qualifying_contacts, "qualifying"))
+
+        row["particle_contacts_per_particle_raw"] = (
+            total_particle_contacts_raw / n_particles_total
+            if n_particles_total > 0
+            else np.nan
+        )
+        row["particle_contacts_per_particle_qualifying"] = (
+            total_particle_contacts_qualifying / n_particles_total
+            if n_particles_total > 0
+            else np.nan
+        )
+
+        rows.append(row)
+
+    return rows
