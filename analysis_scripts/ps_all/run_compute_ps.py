@@ -54,23 +54,25 @@ def main() -> None:
         default=3,
         help="How many consecutive base indexes are excluded from pairing? e.g. 3 -> 1-2, 1-3, 1-4 excluded",
     )
+    parser.add_argument("--r_min", type=float, default=0,
+    
+    help="Lower cutoff. Pass '0' to disable, a number to set.")
     parser.add_argument(
-        "--contact_width",
-        type=float,
-        default=0.08,
-        help="Range for filtering out base-base contacts. r_max = r_opt + width and r_min = r_opt - width",
-)
+        "--r_max", type=float, default=0.7,
+        help="Upper distance cutoff for base pair detection",
+    )
     parser.add_argument(
     "--run_ids",
     nargs="+",
     default=None,
     help="Optional numeric folder prefixes to process, e.g. 251 252 253.",
-)
+    )
     parser.add_argument(
     "--overwrite",
     action="store_true",
     help="Recompute outputs even if valid .npz files already exist.",
-)
+    )
+    parser.add_argument("--folder_name_suffix", type=str, default=None, help="If provided, the output folder computed_metrics gets a suffix.")
 
     args = parser.parse_args()
     # Confirm sweep path
@@ -86,12 +88,14 @@ def main() -> None:
         for run_id in args.run_ids:
             matches = sorted(sweep_path.glob(f"{run_id}_*/trajectory_*.gsd"))
             traj_paths.extend(matches)
-
-
     # Folder structure + calculation of pairing for each traj file
+    
     for traj_path in traj_paths:
         run_dir = traj_path.parent  # run folder
-        output_dir = run_dir / "computed_metrics" / "pairing"
+        if args.folder_name_suffix is None:
+            output_dir = run_dir / "computed_metrics" / "pairing"
+        else:
+            output_dir = run_dir / f"computed_metrics_{args.folder_name_suffix}" / "pairing"
         output_dir.mkdir(parents=True, exist_ok=True)  # create the output folder
         output_file = output_dir / f"{traj_path.stem}_pairing.npz"
         
@@ -110,8 +114,8 @@ def main() -> None:
         )  # get rep radius
         r_opt = (r_att + r_rep) / 2
         # Analysis contact window
-        r_min = r_opt - args.contact_width
-        r_max = r_opt + args.contact_width
+        r_min = args.r_min
+        r_max = args.r_max
         print(f"Processing {traj_path}. Cutoff window = {r_min} to {r_max}, r_opt = {r_opt}.")
 
         with as_traj(
@@ -134,8 +138,10 @@ def main() -> None:
                 stride=args.stride,
                 r_opt=r_opt,
             )
+
             nlist_dict["r_opt"] = np.array([r_opt])
-            nlist_dict["contact_width"] = np.array([args.contact_width])
+            nlist_dict["r_min"] = np.array([r_min])
+            nlist_dict["r_max"] = np.array([r_max])
             np.savez(output_file, **nlist_dict)
 
 

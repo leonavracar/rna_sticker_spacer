@@ -104,6 +104,7 @@ def setup_validation_paths(sweep_dir_name: str) -> dict[str, Path]:
         "error_rate": sweep_dir / "analysis_error_rate.csv",
         "clusters": sweep_dir / "analysis_clusters.csv",
         "graph": sweep_dir / "graph_framewise_summary.csv",
+        "clusters_mix": sweep_dir / "analysis_cluster_resolved.csv"
     }
 
 def setup_npz_mp_paths(sweep_dir:str, run_dir_num:str, rep_num:int = 0) -> dict[str, Path]:
@@ -364,7 +365,7 @@ CLUSTER_ID_COLS = [
     "angle_k_ppp",
     "density",
     "min_contacts",
-    "molecule_file"
+    #"molecule_file"
 ]
 
 
@@ -384,10 +385,10 @@ def make_binned_cluster_df(
         id_cols = CLUSTER_ID_COLS
 
     required_cols = [*id_cols, "cluster_size", "frac_mols"]
-    missing_cols = [col for col in required_cols if col not in cdf.columns]
+    # missing_cols = [col for col in required_cols if col not in cdf.columns]
 
-    if missing_cols:
-        raise ValueError(f"Missing required columns: {missing_cols}")
+    # if missing_cols:
+    #     raise ValueError(f"Missing required columns: {missing_cols}")
 
     df = cdf.copy()
 
@@ -1207,15 +1208,24 @@ def plot_panels_by_group(
     for ax, (group_values, d_panel) in zip(axes, grouped):
         plot_fn(d_panel, ax)
         ax.set_title(make_panel_title(group_values, panel_cols, label_map))
-    title_parts = []
-    if suptitle:
-        title_parts.append(suptitle)
+    title = suptitle or ""
+
+    title_info = []
+
     if final_fraction is not None:
         pct = int(round(final_fraction * 100))
-        title_parts.append(f"last {pct}% of frames")
+        title_info.append(f"last {pct}% of steps")
 
-    if title_parts:
-        fig.suptitle(" — ".join(title_parts))
+    if run_col in df.columns:
+        n_reps = df[run_col].nunique()
+        rep_word = "replicate" if n_reps == 1 else "replicates"
+        title_info.append(f" {n_reps} {rep_word}")
+
+    if title_info:
+        title = f"{title} ({', '.join(title_info)})"
+
+    if title:
+        fig.suptitle(title)
     fig.tight_layout()
     return fig, axes
 

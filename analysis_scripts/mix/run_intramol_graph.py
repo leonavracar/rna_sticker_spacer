@@ -1,34 +1,33 @@
 #!/usr/bin/env python3
 
 """
-Build molecule-level contact edge-list .npz files from saved particle-level pairing .npz files.
+Build molecule-level intramolecular contact .npz files from saved particle-level pairing .npz files.
 
 Input per run:
     computed_metrics/pairing/*_pairing.npz
     computed_metrics/pairing/molecule_lookup.npy
 
 Output per trajectory:
-    computed_metrics/mol_graph/*_molecule_contact_edges.npz
+    computed_metrics/intramol_graph/*_intra_molecule_contacts.npz
 
 Output NPZ format:
-    frame          shape (n_edges_total,)
-    mol_a          shape (n_edges_total,)
-    mol_b          shape (n_edges_total,)
-    n_contacts     shape (n_edges_total,)
-    frame_indices  shape (n_frames,)
-    n_molecules    shape (1,)
+    frame              shape (n_rows,)
+    mol_id             shape (n_rows,)
+    n_intra_contacts   shape (n_rows,)
+    frame_indices      shape (n_frames,)
+    n_molecules        shape (1,)
 
 Usage:
-    python run_mol_graph.py <sweep_dir>
-    python run_mol_graph.py <sweep_dir> --run_ids 251 252 253
-    python run_mol_graph.py <sweep_dir> --overwrite
+    python run_intramol_graph.py <sweep_dir>
+    python run_intramol_graph.py <sweep_dir> --run_ids 251 252 253
+    python run_intramol_graph.py <sweep_dir> --overwrite
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-import sys
 import argparse
+import sys
+from pathlib import Path
 
 import numpy as np
 
@@ -36,18 +35,19 @@ import numpy as np
 analysis_functions_dir = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(analysis_functions_dir))
 
-
 BASE_DIR = analysis_functions_dir / "bulk" / "output_dir"
 
-
 from analysis_scripts.phase_separation import (
-    build_molecule_contact_edge_dict_from_pairing_npz,
+    build_molecule_intra_contact_dict_from_pairing_npz,
 )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Build molecule-level contact edge-list .npz files from saved pairing .npz files."
+        description=(
+            "Build molecule-level intramolecular contact .npz files "
+            "from saved pairing .npz files."
+        )
     )
 
     parser.add_argument(
@@ -65,7 +65,7 @@ def main() -> None:
     parser.add_argument(
         "--overwrite",
         action="store_true",
-        help="Recompute outputs even if valid molecule contact edge files already exist.",
+        help="Recompute outputs even if intramolecular contact files already exist.",
     )
 
     args = parser.parse_args()
@@ -87,7 +87,7 @@ def main() -> None:
 
     for run_dir in run_dirs:
         pairing_dir = run_dir / "computed_metrics" / "pairing"
-        output_dir = run_dir / "computed_metrics" / "mol_graph"
+        output_dir = run_dir / "computed_metrics" / "intramol_graph"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         mol_lookup_file = pairing_dir / "molecule_lookup.npy"
@@ -107,7 +107,7 @@ def main() -> None:
         for pairing_file in pairing_files:
             output_file = output_dir / pairing_file.name.replace(
                 "_pairing.npz",
-                "_molecule_contact_edges.npz",
+                "_intra_molecule_contacts.npz",
             )
 
             if output_file.exists() and not args.overwrite:
@@ -121,14 +121,14 @@ def main() -> None:
             print(f"Processing {pairing_file}")
 
             with np.load(pairing_file) as pairing_npz:
-                edge_dict = build_molecule_contact_edge_dict_from_pairing_npz(
+                intra_dict = build_molecule_intra_contact_dict_from_pairing_npz(
                     pairing_npz=pairing_npz,
                     molecule_id=molecule_id,
                 )
 
-            np.savez(output_file, **edge_dict)
+            np.savez(output_file, **intra_dict)
 
-            print(f"Saved molecule contact edges: {output_file}")
+            print(f"Saved intramolecular contacts: {output_file}")
 
 
 if __name__ == "__main__":

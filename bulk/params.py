@@ -41,7 +41,7 @@ def get_params():
         "--kT", type=float, default=1, help="Temperature factor."
     )
     parser.add_argument(
-        "--N_steps", type=int, default=40_000_000, help="Steps in simulation."
+        "--N_steps", type=int, default=20_000_000, help="Steps in simulation."
     )
     parser.add_argument(
         "--N_write",

@@ -178,8 +178,8 @@ def valency_mask(qi, pi, distances, r_opt=0.5):
 
 def get_filtered_nlist_base_pairs(
     frame: gsd.hoomd.Frame,
-    r_min: float | None = 0.42, # stricter lower boundary for deciding pairs
-    r_max: float | None = 0.58, # stricter upper boundary for deciding pairs
+    r_min: float | None = 0.0, # stricter lower boundary for deciding pairs
+    r_max: float | None = 0.7, # stricter upper boundary for deciding pairs
     exclude_chain: int = 3,
     r_opt: float = 0.5,
 ) -> freud.locality.NeighborList:
@@ -237,12 +237,12 @@ def get_filtered_nlist_base_pairs(
     nlist.filter(val_mask)
     n_post = len(nlist.query_point_indices)
     error_rate = (n_pre - n_post) / n_pre if n_pre > 0 else 0.0
-    return nlist, error_rate
+    return nlist, error_rate, n_pre, n_post
 
 def compute_filtered_nlist_base_pairs_traj(
     traj: gsd.hoomd.HOOMDTrajectory,
-    r_min: float | None = 0.42, # stricter lower boundary for deciding pairs
-    r_max: float | None = 0.58, # stricter upper boundary for deciding pairs
+    r_min: float | None = 0, # stricter lower boundary for deciding pairs
+    r_max: float | None = 0.7, # stricter upper boundary for deciding pairs
     exclude_chain: int = 3,
     stride: int = 1,
     r_opt: float = 0.5,
@@ -251,7 +251,8 @@ def compute_filtered_nlist_base_pairs_traj(
     Returns a dictionary with 4 np.arrays(frame_idx, base0, base1, distances) with columns frames.
     """
     nlist_dict = {}
-
+    n_pre_list = []
+    n_post_list = []
     # Stride handling
     n_frames = len(traj)
     sampled_indices = range(0, n_frames, stride)
@@ -261,7 +262,7 @@ def compute_filtered_nlist_base_pairs_traj(
     # loop and compute nlist over frames
     for frame_idx in sampled_indices:
         frame = traj[frame_idx]
-        nlist_filt, error_rate = get_filtered_nlist_base_pairs(
+        nlist_filt, error_rate, n_pre, n_post = get_filtered_nlist_base_pairs(
             frame=frame,
             r_min=r_min,
             r_max=r_max,
@@ -273,9 +274,11 @@ def compute_filtered_nlist_base_pairs_traj(
         nlist_dict[f"pi_{frame_idx}"] = nlist_filt.point_indices
         nlist_dict[f"distances_{frame_idx}"] = nlist_filt.distances
         ambiguity_rates.append(error_rate)
-
+        n_pre_list.append(n_pre)
+        n_post_list.append(n_post)
     nlist_dict["error_rates"] = np.array(ambiguity_rates)  # shape (n_frames,)
-
+    nlist_dict["n_pre"] = np.array(n_pre_list)              # candidates before valency filter
+    nlist_dict["n_post"] = np.array(n_post_list)            # kept pairs after valency filter
     return nlist_dict
 
 def transform_and_filter_counter_to_dict(molecule_edges_counter: Counter, min_contacts: int = 1) -> dict:
@@ -2174,3 +2177,85 @@ def graph_framewise_summary_rows_from_edge_npz(
         rows.append(row)
 
     return rows
+
+### Intramol contact graph
+from collections import Counter
+import numpy as np
+
+
+def build_molecule_intra_contact_dict_from_pairing_npz(
+    pairing_npz,
+    molecule_id: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """
+    Build sparse molecule-level intramolecular contact counts from pairing data.
+
+    One output row represents one molecule in one frame with at least one
+    intramolecular particle contact.
+
+    Parameters
+    ----------
+    pairing_npz
+        Loaded pairing .npz file. Expected keys include frame_indices and
+        per-frame qi_<frame>, pi_<frame> arrays.
+    molecule_id
+        Particle-to-molecule lookup array. molecule_id[p] gives the molecule
+        index of particle p.
+
+    Returns
+    -------
+    dict[str, np.ndarray]
+        Sparse intramolecular contact table with arrays:
+        frame, mol_id, n_intra_contacts, frame_indices, n_molecules.
+    """
+    frame_out = []
+    mol_out = []
+    contact_out = []
+
+    molecule_id = np.asarray(molecule_id, dtype=int)
+    n_molecules = int(molecule_id.max()) + 1
+
+    frame_indices = np.asarray(pairing_npz["frame_indices"], dtype=int)
+
+    for frame_idx in frame_indices:
+        frame_idx = int(frame_idx)
+
+        qi = np.asarray(pairing_npz[f"qi_{frame_idx}"], dtype=int)
+        pi = np.asarray(pairing_npz[f"pi_{frame_idx}"], dtype=int)
+
+        counts = Counter()
+        seen_particle_pairs = set()
+
+        for q, p in zip(qi, pi):
+            q = int(q)
+            p = int(p)
+
+            if q == p:
+                continue
+
+            mol_q = int(molecule_id[q])
+            mol_p = int(molecule_id[p])
+
+            if mol_q != mol_p:
+                continue
+
+            particle_pair = tuple(sorted((q, p)))
+
+            if particle_pair in seen_particle_pairs:
+                continue
+
+            seen_particle_pairs.add(particle_pair)
+            counts[mol_q] += 1
+
+        for mol, n_contacts in counts.items():
+            frame_out.append(frame_idx)
+            mol_out.append(mol)
+            contact_out.append(n_contacts)
+
+    return {
+        "frame": np.asarray(frame_out, dtype=np.int64),
+        "mol_id": np.asarray(mol_out, dtype=np.int64),
+        "n_intra_contacts": np.asarray(contact_out, dtype=np.int64),
+        "frame_indices": frame_indices,
+        "n_molecules": np.asarray([n_molecules], dtype=np.int64),
+    }

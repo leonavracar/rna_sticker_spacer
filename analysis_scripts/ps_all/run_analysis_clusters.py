@@ -51,6 +51,7 @@ def add_homogeneous_material_columns(
     df["one_cluster_mol_frac"] = (
         df["cluster_size"] / df["n_molecules_total"]
     )
+    
 
     df["one_cluster_particle_count"] = (
         df["cluster_size"] * df["mol_len"]
@@ -111,7 +112,12 @@ def main() -> None:
         action="store_true",
         help="Overwrite analysis_clusters.csv if it already exists.",
     )
-
+    parser.add_argument(
+        "--folder_name_suffix",
+        type=str,
+        default="",
+        help="Suffix for computed_metrics dir and output CSV, e.g. '_rmax07'.",
+    )
     args = parser.parse_args()
 
     sweep_path = BASE_DIR / args.sweep_dir
@@ -119,7 +125,8 @@ def main() -> None:
     if not sweep_path.is_dir():
         raise FileNotFoundError(f"Sweep directory not found: {sweep_path}")
 
-    out_csv = sweep_path / "analysis_clusters.csv"
+    suffix = args.folder_name_suffix
+    out_csv = sweep_path / f"analysis_clusters_{suffix}.csv"
 
     if out_csv.exists() and not args.overwrite:
         raise FileExistsError(
@@ -131,7 +138,7 @@ def main() -> None:
     if args.run_ids is None:
         edge_npz_paths = sorted(
             sweep_path.glob(
-                "*/computed_metrics/mol_graph/*_molecule_contact_edges.npz"
+                f"*/computed_metrics_{suffix}/mol_graph/*_molecule_contact_edges.npz"
             )
         )
     else:
@@ -140,7 +147,7 @@ def main() -> None:
             edge_npz_paths.extend(
                 sorted(
                     sweep_path.glob(
-                        f"{run_id}_*/computed_metrics/mol_graph/*_molecule_contact_edges.npz"
+                        f"{run_id}_*/computed_metrics_{suffix}/mol_graph/*_molecule_contact_edges.npz"
                     )
                 )
             )

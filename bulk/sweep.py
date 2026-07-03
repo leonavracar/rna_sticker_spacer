@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-#SBATCH --job-name=51a_repeat_cag47x100
+#SBATCH --job-name=54b
 #SBATCH --output=job_output/job_output2_%A_%a.txt
 #SBATCH --error=job_output/job_error2_%A_%a.txt
 #SBATCH --nodes=1
@@ -9,7 +9,7 @@
 #SBATCH --time=48:00:00
 #SBATCH --partition=gpu
 #SBATCH --gres=gpu:1
-#SBATCH --array=92,93,94,95,97,98,99,103,105,106,113
+#SBATCH --array=60-89
 
 import argparse
 import os
