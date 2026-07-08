@@ -37,7 +37,6 @@ import os
 import subprocess
 from pathlib import Path
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3,4,5,6,7"
 
 PROJECT_DIR = Path(
     "/groups/goloborodko/projects/leona/rna_sticker_spacer/bulk")
