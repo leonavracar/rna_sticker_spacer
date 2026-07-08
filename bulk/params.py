@@ -1,399 +1,332 @@
-import argparse
-import numpy as np
+"""Command-line parameter definitions for RNA sticker-spacer simulations.
 
-
-"""Notes:
-* restart_from: when running from simulation state, parameters.txt order of old + new sim has to be the same, n_replicates and folder_name naming logic
+Notes
+-----
+restart_from:
+    When restarting from a simulation state, the parameter order in parameters.txt
+    for the old and new simulation must be the same. Also check n_replicates and
+    folder_name naming logic.
 """
 
+import argparse
 
-def get_params():
 
-    # Parameters
-    parser = argparse.ArgumentParser(description="Simulation Parameters")
+DEFAULTS = {
+    "V1": {
+        "sqd": {
+            "r_rep": 0.25,
+            "r_att": 0.75,
+            "ncut_wc": 1.061,  # valency
+            "density_upper_rcut": 1.25,
+            "density_lower_rcut": 0.75,
+            "nlist_rcut": 1.25,
+        },
+    },
+    "V2": {
+        "sqd": {
+            "r_rep": 0.25,
+            "r_att": 0.75,
+            "ncut_wc": 1.061,  # valency
+            "density_upper_rcut": 0.807,
+            "density_lower_rcut": 0.48,
+            "nlist_rcut": 0.807,
+        },
+    },
+}
 
-    # Thermostat type
-    parser.add_argument("--thermostat", type=str, default="langevin", help="")
-    parser.add_argument(
-        "--dpd_r_cut", type=float, default=2, help="Distance cutoff for DPD"
+
+def get_param_mode(argv: list[str] | None = None) -> str:
+    """Read only --param_mode before building the full parser."""
+    mode_parser = argparse.ArgumentParser(add_help=False)
+    mode_parser.add_argument(
+        "--param_mode",
+        choices=list(DEFAULTS),
+        default="V1",
     )
-    # Logging of potential energies
-    parser.add_argument("--log_energies", action="store_false",
-                    help="Log per-force energy terms (default: only timestep + tps + walltime).")
-    # Input files
-    parser.add_argument("--param_file", type=str, help="Path to a .txt file")
+
+    mode_args, _ = mode_parser.parse_known_args(argv)
+    return mode_args.param_mode
+
+
+def get_params(argv: list[str] | None = None) -> argparse.ArgumentParser:
+    """Create and return the command-line argument parser for simulations."""
+
+    param_mode = get_param_mode(argv)
+    sqd_defaults = DEFAULTS[param_mode]["sqd"]
+
+    parser = argparse.ArgumentParser(
+        description=f"Simulation Parameters. Default parameter mode: {param_mode}"
+    )
+
     parser.add_argument(
+        "--param_mode",
+        choices=list(DEFAULTS),
+        default=param_mode,
+        help=(
+            "Parameter default mode to use. "
+            "V1 uses exact-valency SQD cutoffs. "
+            "V2 uses easier-switching SQD cutoffs."
+        ),
+    )
+
+    thermostat = parser.add_argument_group("Thermostat")
+    io_files = parser.add_argument_group("Input/output files")
+    simulation = parser.add_argument_group("Simulation setup")
+    seeds = parser.add_argument_group("Random seeds")
+    restart = parser.add_argument_group("Restart options")
+    geometry = parser.add_argument_group("Bond and angle parameters")
+    sqd = parser.add_argument_group("SQD parameters")
+
+    # Thermostat
+    thermostat.add_argument(
+        "--thermostat",
+        type=str,
+        default="langevin",
+        help="Thermostat method to use.",
+    )
+    thermostat.add_argument(
+        "--dpd_r_cut",
+        type=float,
+        default=2.0,
+        help="Distance cutoff for DPD thermostat.",
+    )
+
+    # Input/output files
+    io_files.add_argument(
+        "--param_file",
+        type=str,
+        help="Path to a .txt parameter file.",
+    )
+    io_files.add_argument(
         "--molecule_file",
         type=str,
-        default="AGUC30.json",
-        help="Path to json file defining molecules",
+        default="molecules.json",
+        help="Path to JSON file defining molecules.",
     )
-    parser.add_argument(
+    io_files.add_argument(
         "--output_dir",
         type=str,
         default="output_dir",
-        help="Path to a directory containing inputs: parameters.txt and molecules.json files.",
+        help=(
+            "Path to a directory containing input files such as parameters.txt "
+            "and molecules.json."
+        ),
     )
-    parser.add_argument("--suffix", type=str, default="_", help="Suffix added to trajectory.gsd filename.")
+    io_files.add_argument(
+        "--suffix",
+        type=str,
+        default="_",
+        help="Suffix added to trajectory.gsd filename.",
+    )
+    io_files.add_argument(
+        "--log_energies",
+        action="store_true",
+        help=(
+            "Log per-force energy terms. By default, only timestep, TPS, "
+            "and walltime are logged."
+        ),
+    )
 
     # Simulation setup
-    parser.add_argument(
-        "--kT", type=float, default=1, help="Temperature factor."
+    simulation.add_argument(
+        "--kT",
+        type=float,
+        default=1.0,
+        help="Temperature factor.",
     )
-    parser.add_argument(
-        "--N_steps", type=int, default=20_000_000, help="Steps in simulation."
+    simulation.add_argument(
+        "--N_steps",
+        type=int,
+        default=40_000_000,
+        help="Number of simulation steps.",
     )
-    parser.add_argument(
+    simulation.add_argument(
         "--N_write",
         type=int,
-        default=10_000, # 2k default
-        help="After how many steps state is documented in gsd file",
+        default=10_000,
+        help="Write simulation state to the GSD file every N steps.",
     )
-    parser.add_argument(
-    "--max_ke_per_particle_stop",
-    type=float,
-    default=None,
-    help="Stop simulation if KE per particle exceeds this value after 100k steps. Disabled if None.",
-    )
-    parser.add_argument(
-        "--beta",
+    simulation.add_argument(
+        "--max_ke_per_particle_stop",
         type=float,
-        default=1,
-        help="Temp dependend scaling factor for energies = 1/kT",
+        default=None,
+        help=(
+            "Stop simulation if kinetic energy per particle exceeds this value "
+            "after 100k steps. Disabled if None."
+        ),
     )
-    parser.add_argument(
-        "--density", type=float, default=0.001, help="Particle number density, used to compute the cubic simulation box side length L = (N_particles / density) ** (1/3)."
-    )
-    parser.add_argument(
-        "--dt", type=float, default=0.01, help="Timestep"
-    ) 
-    parser.add_argument(
-        "--gamma", type=float, default=0.1, help="Friction factor"
-    )  # 0.1
-    parser.add_argument(
-        "--dry_run", action="store_true", help="Whether to actually run."
-    )
-    
-    parser.add_argument(
-        "--structure_type",
-        type=str,
-        default="sticker_spacer",
-        help="Model architecture, see setup.py",
-    )
-    parser.add_argument(
-    "--nlist_rcut",
-    type=float,
-    default=0.807,
-    help=
-        "Neighbor-list and SQD pair-search cutoff, set to density_upper_rcut_base",)
-    
-    parser.add_argument(
-        "--buffer",
+    simulation.add_argument(
+        "--density",
         type=float,
-        default=0.3,
-        help="Neighbor-list buffer distance added beyond the interaction cutoff; larger values reduce rebuild frequency but increase neighbor-list size.",
+        default=0.001,
+        help=(
+            "Particle number density. Used to compute cubic simulation box side "
+            "length L = (N_particles / density) ** (1/3)."
+        ),
     )
-    # Seed for reproduciblity
-    parser.add_argument(
+    simulation.add_argument(
+        "--dt",
+        type=float,
+        default=0.01,
+        help="Simulation timestep.",
+    )
+    simulation.add_argument(
+        "--gamma",
+        type=float,
+        default=0.1,
+        help="Friction factor.",
+    )
+    simulation.add_argument(
+        "--dry_run",
+        action="store_true",
+        help="Prepare inputs and report settings without actually running the simulation.",
+    )
+
+    # Random seeds
+    seeds.add_argument(
         "--init_seed",
         type=int,
         default=None,
-        help="Seed for random initial configuration generation. If omitted, a random 32-bit seed is generated.",
+        help=(
+            "Seed for random initial configuration generation. If omitted, "
+            "a random 32-bit seed is generated."
+        ),
     )
-
-    parser.add_argument(
+    seeds.add_argument(
         "--hoomd_seed",
         type=int,
         default=None,
-        help="Seed for HOOMD stochastic dynamics. Must be in [1, 65535]. If omitted, a random seed in this range is generated.",
+        help=(
+            "Seed for HOOMD stochastic dynamics. Must be in [1, 65535]. "
+            "If omitted, a random seed in this range is generated."
+        ),
     )
 
-    # Run sim from state
-    parser.add_argument(
+    # Restart options
+    restart.add_argument(
         "--restart_from",
         type=str,
         default=None,
-        help="Path to a .gsd file to run sim from its state",
+        help="Path to a .gsd file to restart the simulation from.",
     )
-    parser.add_argument(
+    restart.add_argument(
         "--restart_frame",
         type=int,
         default=-1,
-        help="Frame index for the state to run sim from",
+        help="Frame index for the state to restart from.",
     )
 
-    # Interaction energy params
-    parser.add_argument(
-        "--E_att_nonwc_min", type=float, default=0, help="non-WC attraction"
-    )
-    parser.add_argument("--E_att_nonwc_max", type=float, default=4)
-
-    parser.add_argument("--E_att", type=float, default=10, help="WC attraction")
-    parser.add_argument(
-        "--E_rep", type=float, default=20, help="standard repulsion between particles"
-    )  # Repulsive scale
-
-    parser.add_argument(
-        "--E_rep_wc_nondir",
+    # SQD / interaction parameters
+    sqd.add_argument(
+        "--E_att",
         type=float,
-        default=20,
-        help="Repulsion for duplicate base of wc paired bases e.g. A1-U1",
+        default=4.0,
+        help="Watson-Crick attraction strength.",
     )
-    parser.add_argument("--E_rep_wc", type=float, default=20)
-    parser.add_argument(
-        "--E_att_back", type=float, default=0
-    )  # no backbone attraction when zero (0mM Mg2+)
-
-    ## Interaction distance cutoffs (standard for particles except WC interaction)
-    parser.add_argument("--r_rep", type=float, default=1.0)
-    parser.add_argument("--r_att", type=float, default=1.5)
-    parser.add_argument(
-        "--r_d", type=float, default=2.0
-    )  # "density" cutoff (used in SquareDensity)
-
-    ## Interaction distance cutoffs for WC and non-WC interaction
-    parser.add_argument("--r_rep_base", type=float, default=0.25)
-    parser.add_argument("--r_att_base", type=float, default=0.75)
-    parser.add_argument("--r_d_base", type=float, default=1)
-
-    ## Valency and contact params
-    valency_low = 1.03
-    valency_high = 1.061
-
-    parser.add_argument(
-        "--ncut_ij_comp", type=float, default=valency_low, help="valency of WC"
-    )
-
-    parser.add_argument("--ncut_ij_nonwc", type=float, default=valency_high)
-    # parser.add_argument('--ncut_ji_nonwc', type=int, default=valency)
-
-    parser.add_argument(
-        "--ncut_ij_back", type=float, default=12
-    )  # 12 arrives from the way spheres can pack
-
-    parser.add_argument(
-        "--ncut_ij_wc_nondir",
+    sqd.add_argument(
+        "--E_rep",
         type=float,
-        default=valency_high,
-        help="Cutoff for non-directional WC e.g. A1-U2, avoids valency being satisfied",
+        default=20.0,
+        help="Standard repulsion strength between particles.",
     )
-
-    # Bond and angle params
-    parser.add_argument(
-        "--bond_length", type=float, default=1
-    )  # equilibrium bond length
-    parser.add_argument(
-        "--bond_k", type=float, default=100.0
-    )  # Thurmalai, how stiff bond is (higher = more resistance to stretching/compression)
-
-    parser.add_argument("--angle_k_ppp", type=float, default=100)
-    parser.add_argument("--angle_k_ppb", type=float, default=75)
-    parser.add_argument("--angle_k_bpb", type=float, default=50)
-    parser.add_argument("--angle_k_bpp", type=float, default=35)
-
-    # directional-branched
-    parser.add_argument(
-        "--angle_branch_dir_ppp_t0", type=float, default=2.7
-    )  # 2.7 Phosphate-Phosphate-Phosphate, in radians
-    parser.add_argument(
-        "--angle_branch_dir_ppb_t0", type=float, default=2 * np.pi / 3
-    )  # Phosphate-Phosphate-Base, in radians
-    parser.add_argument(
-        "--angle_branch_dir_bpb_t0", type=float, default=np.pi / 3
-    )  # Base-Phosphate-Base, in radians
-
-    parser.add_argument("--bond_bp_branch_dir_r0", type=float, default=0.5)  # in nm
-    parser.add_argument("--bond_pp_branch_dir_r0", type=float, default=1)  # in nm
-
-    parser.add_argument("--k_dihe_stacking", type=float, default=2)
-    parser.add_argument("--k_dihe_direction", type=float, default=5)
-
-    # SQD V2.0 parameters
-    parser.add_argument(
+    sqd.add_argument(
+        "--r_rep",
+        type=float,
+        default=sqd_defaults["r_rep"],
+        help="Repulsive interaction cutoff distance.",
+    )
+    sqd.add_argument(
+        "--r_att",
+        type=float,
+        default=sqd_defaults["r_att"],
+        help="Attractive interaction cutoff distance.",
+    )
+    sqd.add_argument(
+        "--ncut_wc",
+        type=float,
+        default=sqd_defaults["ncut_wc"],
+        help="Valency/contact cutoff for Watson-Crick interactions.",
+    )
+    sqd.add_argument(
+        "--nlist_rcut",
+        type=float,
+        default=sqd_defaults["nlist_rcut"],
+        help=(
+            "Neighbor-list and SQD pair-search cutoff. Usually set equal to "
+            "density_upper_rcut."
+        ),
+    )
+    sqd.add_argument(
+        "--buffer",
+        type=float,
+        default=0.3,
+        help=(
+            "Neighbor-list buffer distance added beyond the interaction cutoff. "
+            "Larger values reduce rebuild frequency but increase neighbor-list size."
+        ),
+    )
+    sqd.add_argument(
         "--density_upper_rcut",
         type=float,
-        default=1.571,
-        help="Upper boundary for r_d, fits r_rep=1, r_a=1.5",
+        default=sqd_defaults["density_upper_rcut"],
+        help=(
+            "Upper boundary for r_d. In V1, 1.25 gives exact valency of 1 "
+            "for r_att=0.75 and r_rep=0.25. In V2, 0.807 makes bond switching "
+            "easier but gives valency > 1."
+        ),
     )
-    parser.add_argument(
+    sqd.add_argument(
         "--density_lower_rcut",
         type=float,
-        default=1.224,
-        help="Lower boundary for r_d, fits r_rep=1, r_a=1.5",
-    )
-    parser.add_argument(
-        "--sqd_version",
-        type=int,
-        default=5, # 5 for sticker spacer
-        help="Which sqd version to use. v2 has additional r_d cutoffs",
+        default=sqd_defaults["density_lower_rcut"],
+        help=(
+            "Lower boundary for r_d. In V1, this is set equal to r_att for "
+            "exact valency of 1. In V2, this is 0.48."
+        ),
     )
 
-    parser.add_argument(
-        "--density_upper_rcut_base",
+    # Bond and angle parameters
+    geometry.add_argument(
+        "--bond_r0",
         type=float,
-        default=0.807,
-        help="Upper boundary for r_d, fits r_rep=0.25, r_a=0.75",
+        default=1.0,
+        help="Equilibrium bond length.",
     )
-    parser.add_argument(
-        "--density_lower_rcut_base",
+    geometry.add_argument(
+        "--bond_k",
         type=float,
-        default=0.48,
-        help="Lower boundary for r_d, fits r_rep=0.25, r_a=0.75",
+        default=100.0,
+        help=(
+            "Bond stiffness. Higher values increase resistance to stretching "
+            "or compression."
+        ),
     )
-
-    # SQD V4 parameters (differentiated A1-U1 and A2-U2 interactions)
-    parser.add_argument(
-        "--E_att_2", type=float, default=0, help="Attraction for brothers A2-U2, C2-G2"
+    geometry.add_argument(
+        "--angle_k_ppp",
+        type=float,
+        default=2.5,
+        help="Angle stiffness for Phosphate-Phosphate-Phosphate angles.",
     )
-    parser.add_argument("--E_rep_wc_2", type=float, default=20, help="")
-    parser.add_argument("--r_att_base_2", type=float, default=1.5, help="")
-    parser.add_argument("--r_rep_base_2", type=float, default=1, help="")
-    parser.add_argument(
-        "--density_upper_rcut_base_2", type=float, default=1.571, help=""
-    )
-    parser.add_argument(
-        "--density_lower_rcut_base_2", type=float, default=1.224, help=""
-    )
-    parser.add_argument("--ncut_ij_comp_2", type=float, default=valency_high)
-
-    # Align angle plugin
-    parser.add_argument(
-        "--use_align_angle", action="store_true", help="Enable align-angle force"
-    )
-    parser.add_argument(
-        "--align_k", type=float, default=20.0, help="Strength of align-angle force"
-    )
-    parser.add_argument(
-        "--align_multiplicity", type=int, default=2, help="1 = polar, 2 = nematic"
+    geometry.add_argument(
+        "--angle_ppp_t0",
+        type=float,
+        default=2.7,
+        help="Equilibrium Phosphate-Phosphate-Phosphate angle in radians.",
     )
 
     return parser
 
 
-def derived_params(
-    args,
-):  # to do: see where this is used and if a function call is necessary
-    # Derived parameters (not passed via CLI)
-    derived = dict()
-    derived["E_att_nonwc"] = -args.E_att_nonwc_min * args.beta
-    derived["E_att_comp"] = -args.E_att * args.beta  # Attractive scale
-    derived["E_rep_scaled"] = args.E_rep * args.beta  # scale repulsion by beta
-    derived["E_rep_wc_scaled"] = args.E_rep_wc * args.beta
-    derived["E_att_back_scaled"] = -args.E_att_back * args.beta
-    derived["E_rep_wc_nondir_scaled"] = args.E_rep_wc_nondir * args.beta
-    derived["E_att_comp_2"] = -args.E_att_2 * args.beta
-    derived["E_rep_wc_2_scaled"] = args.E_rep_wc_2 * args.beta
-    return derived
-
-
-def base_info():
-    base_info = dict()
-    base_info["type_names"] = [
-        "B",
-        "A1",
-        "A2",
-        "U1",
-        "U2",
-        "C1",
-        "C2",
-        "G1",
-        "G2",
-        "A",
-        "U",
-        "G",
-        "C",
-    ]
-    base_info["type_names_original"] = ["B", "A", "U", "G", "C"]
-    
-    base_info["complements"] = {
-        "A1": "U1",
-        "U1": "A1",
-        "G1": "C1",
-        "C1": "G1",
-        "A2": "U2",
-        "U2": "A2",
-        "G2": "C2",
-        "C2": "G2",
-        "A": "U",
-        "U": "A",
-        "G": "C",
-        "C": "G",
+def base_info() -> dict[str, object]:
+    """Return fixed particle, bond, angle, and complement definitions for the model."""
+    return {
+        "type_names": ["A", "U", "G", "C"],
+        "complements": {
+            "A": "U",
+            "U": "A",
+            "G": "C",
+            "C": "G",
+        },
+        "bond_types": ["Base-Base"],
+        "angle_types": ["Base-Base-Base"],
     }
-    base_info["complements_1"] = {
-        "A1": "U1",
-        "U1": "A1",
-        "G1": "C1",
-        "C1": "G1",
-    }
-    base_info["complements_2"] = {
-        "A2": "U2",
-        "U2": "A2",
-        "G2": "C2",
-        "C2": "G2",
-    }
-
-    base_info["non_wc_complements"] = {
-        "A1": ["C1", "A1", "G1"],
-        "U1": ["C1", "U1", "G1"],
-        "C1": ["C1", "U1", "A1"],
-        "G1": ["G1", "A1", "U1"],
-        "A2": ["C2", "A2", "G2"],
-        "U2": ["C2", "U2", "G2"],
-        "C2": ["C2", "U2", "A2"],
-        "G2": ["G2", "A2", "U2"],
-        "A": ["C", "G", "A"],
-        "U": ["C", "G", "U"],
-        "C": ["A", "U", "C"],
-        "G": ["A", "U", "G"],
-    }
-
-    base_info["type_names_sticker"] = ["A", "U", "G", "C"]
-    
-    base_info["non_wc_original"] = {
-        "A": ["A", "G", "C"],
-        "U": ["U", "G", "C"],
-        "G": ["A", "G", "U"],
-        "C": ["A", "U", "C"],
-    }
-    base_info["complements_original"] = {"A": "U", "U": "A", "G": "C", "C": "G"}
-
-    base_info["duplicates"] = {
-        "A": ["A1", "A2"],
-        "U": ["U1", "U2"],
-        "C": ["C1", "C2"],
-        "G": ["G1", "G2"],
-    }
-
-    base_info["wc_nondirectional"] = {
-        "A1": "U2",
-        "U1": "A2",
-        "A2": "U1",
-        "U2": "A1",
-        "G1": "C2",
-        "C1": "G2",
-        "G2": "C1",
-        "C2": "G1",
-    }
-    base_info["non_wc_nondirectional"] = {
-        "A1": ["C2", "A2", "G2"],
-        "U1": ["C2", "U2", "G2"],
-        "C1": ["C2", "U2", "A2"],
-        "G1": ["G2", "A2", "U2"],
-        "A2": ["C1", "A1", "G1"],
-        "U2": ["C1", "U1", "G1"],
-        "C2": ["C1", "U1", "A1"],
-        "G2": ["G1", "A1", "U1"],
-    }
-
-    base_info["all_nondirectional"] = {
-        "A1": ["U2", "C2", "A2", "G2"],
-        "U1": ["A2", "C2", "U2", "G2"],
-        "C1": ["G2", "C2", "U2", "A2"],
-        "G1": ["C2", "G2", "A2", "U2"],
-        "A2": ["U1", "C1", "A1", "G1"],
-        "U2": ["A1", "C1", "U1", "G1"],
-        "C2": ["G1", "C1", "U1", "A1"],
-        "G2": ["C1", "G1", "A1", "U1"],
-    }
-
-    return base_info

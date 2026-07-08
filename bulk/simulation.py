@@ -1,326 +1,289 @@
-import numpy as np
+"""Simulation utilities for the one-particle A/U/G/C sticker-spacer model.
+
+This module contains:
+- HOOMD force initialization,
+- integrator setup,
+- simulation state setup,
+- logging and writing,
+- simulation execution with optional kinetic-energy stopping.
+
+The model-specific particle, bond, and angle names are expected to be attached
+to ``par`` from ``params.base_info()`` before these functions are called.
+"""
+
+from __future__ import annotations
+
+import argparse
+import time
+from collections.abc import Sequence
+from pathlib import Path
+from typing import Any, TypeAlias
+
+import gsd.hoomd
 import hoomd
+from hoomd.custom import Action
+from hoomd.logging import log
 from hoomd.sqd_plugin import sqd_potential
 
-from setup import define_pairwise_sqd_v1
-from setup import define_pairwise_sqd_v2
-from setup import define_pairwise_sqd_2_particles
-from setup import define_pairwise_sqd_v2_brothers
 from setup import define_pairwise_sqd_sticker_spacer
 
 
+ForceList: TypeAlias = list[Any]
+ForceObjects: TypeAlias = dict[str, Any]
 
-# this import is clunky just temporarily so it runs on cluster where AlignAngle is not installed
-try:
-    from hoomd import align_angle
-except ImportError:
-    align_angle = None
+NLIST_EXCLUSIONS: tuple[str, ...] = ("bond", "1-3", "1-4")
 
-import time
-from hoomd.custom import Action
-from hoomd.logging import log
 
 class RuntimeClock(Action):
-    def __init__(self):
+    """Expose elapsed wall time as a HOOMD logger quantity."""
+
+    def __init__(self) -> None:
+        """Initialize the wall-time counter."""
         super().__init__()
         self._t0 = time.perf_counter()
 
-    def act(self, timestep):
-        pass  # required, but we don't need it to do anything
+    def act(self, timestep: int) -> None:
+        """Required HOOMD action hook; no per-step action is needed."""
+        return None
 
-    @log(category='scalar')
-    def walltime(self):
+    @log(category="scalar")
+    def walltime(self) -> float:
+        """Return elapsed wall time in seconds."""
         return time.perf_counter() - self._t0
 
-def initialize_model(par):
+
+def validate_simulation_model_info(par: argparse.Namespace) -> None:
+    """Validate fixed model metadata required by this simulation module."""
+    required_attrs = [
+        "type_names",
+        "bond_types",
+        "angle_types",
+    ]
+
+    missing_attrs = [name for name in required_attrs if not hasattr(par, name)]
+    if missing_attrs:
+        raise AttributeError(
+            "Missing model metadata on par: "
+            f"{missing_attrs}. Attach params.base_info() after parsing arguments."
+        )
+
+    if list(par.bond_types) != ["Base-Base"]:
+        raise ValueError(
+            f"Expected bond_types ['Base-Base'], got {par.bond_types}.")
+
+    if list(par.angle_types) != ["Base-Base-Base"]:
+        raise ValueError(
+            "Expected angle_types ['Base-Base-Base'], "
+            f"got {list(par.angle_types)}."
+        )
+
+
+def configure_bond_force(
+    bond_force: Any,
+    par: argparse.Namespace,
+) -> None:
+    """Assign harmonic bond parameters for consecutive bases."""
+    bond_force.params["Base-Base"] = {
+        "k": float(par.bond_k),
+        "r0": float(par.bond_r0),
+    }
+
+    print("Bond force configured.")
+    print(f"  Base-Base: k={float(par.bond_k):g}, r0={float(par.bond_r0):g}")
+
+
+def configure_angle_force(
+    angle_force: Any,
+    par: argparse.Namespace,
+) -> None:
+    """Assign harmonic angle parameters for consecutive base triplets."""
+    angle_force.params["Base-Base-Base"] = {
+        "k": float(par.angle_k_ppp),
+        "t0": float(par.angle_ppp_t0),
+    }
+
+    print("Angle force configured.")
+    print(
+        "  Base-Base-Base: "
+        f"k={float(par.angle_k_ppp):g}, t0={float(par.angle_ppp_t0):g}"
+    )
+
+
+def initialize_model(par: argparse.Namespace) -> tuple[ForceList, ForceObjects]:
+    """Create SQD, bond, and angle forces for the A/U/G/C model."""
+    validate_simulation_model_info(par)
+
+    print("Initializing model forces...")
+    print(f"  nlist_rcut: {float(par.nlist_rcut):g}")
+    print(f"  buffer: {float(par.buffer):g}")
+    print(f"  exclusions: {NLIST_EXCLUSIONS}")
 
     nlist = hoomd.md.nlist.Tree(
-        buffer=par.buffer, default_r_cut=par.nlist_rcut, exclusions=("bond", "1-3", "1-4")
+        buffer=float(par.buffer),
+        default_r_cut=float(par.nlist_rcut),
+        exclusions=NLIST_EXCLUSIONS,
     )
 
-    sqd = sqd_potential.SquareDensity(nlist, default_r_cut=par.nlist_rcut)
+    sqd = sqd_potential.SquareDensity(
+        nlist,
+        default_r_cut=float(par.nlist_rcut),
+    )
+    define_pairwise_sqd_sticker_spacer(sqd=sqd, par=par)
 
-    # SQD potential version pick
-    if par.sqd_version == 1:
-        define_pairwise_sqd_v1(sqd, par)
-    elif par.sqd_version == 2:
-        define_pairwise_sqd_v2(sqd, par)
-    elif par.sqd_version == 3:
-        define_pairwise_sqd_2_particles(sqd, par)
-    elif par.sqd_version == 4:
-        define_pairwise_sqd_v2_brothers(sqd, par)
-    elif par.sqd_version == 5:
-        define_pairwise_sqd_sticker_spacer(sqd, par)
-
-    # default single-object version (used in ts7)
     bond_harmonic = hoomd.md.bond.Harmonic()
+    configure_bond_force(bond_force=bond_harmonic, par=par)
+
     angle_harmonic = hoomd.md.angle.Harmonic()
-    dihedral_per = hoomd.md.dihedral.Periodic()
+    configure_angle_force(angle_force=angle_harmonic, par=par)
 
-    # split-object placeholders for troubleshoot8
-    angle_ppp = None
-    angle_ppb = None
-    angle_bpb = None
-    angle_bpp = None
-    dihedral_stacking = None
-    dihedral_direction = None
-    bond_bp = None
-    bond_pp = None
+    forces: ForceList = [
+        sqd,
+        bond_harmonic,
+        angle_harmonic,
+    ]
 
-    align_force = None  # Align angle (ONLY ADDED TO FORCES IN 2_particles)
-
-    if getattr(par, "use_align_angle", False):
-        align_force = align_angle.DirectorAlign()
-
-        align_force.params["Phosphate-Phosphate-Phosphate"] = dict(
-            k=0.0, multiplicity=par.align_multiplicity
-        )
-        align_force.params["Phosphate-Phosphate-Base"] = dict(
-            k=par.align_k, multiplicity=par.align_multiplicity
-        )
-        align_force.params["Base-Phosphate-Phosphate"] = dict(
-            k=0.0, multiplicity=par.align_multiplicity
-        )
-
-    if par.structure_type == "troubleshoot7":
-        angle_harmonic.params["Phosphate-Phosphate-Phosphate"] = dict(
-            k=par.angle_k_ppp, t0=par.angle_branch_dir_ppp_t0
-        )
-        angle_harmonic.params["Phosphate-Phosphate-Base"] = dict(
-            k=par.angle_k_ppb, t0=par.angle_branch_dir_ppb_t0
-        )
-        angle_harmonic.params["Base-Phosphate-Base"] = dict(
-            k=par.angle_k_bpb, t0=par.angle_branch_dir_bpb_t0
-        )
-        angle_harmonic.params["Base-Phosphate-Phosphate"] = dict(
-            k=par.angle_k_bpp,
-            t0=par.angle_branch_dir_ppp_t0 - par.angle_branch_dir_ppb_t0,
-        )
-
-        bond_harmonic.params["Base-Phosphate"] = dict(
-            k=par.bond_k, r0=par.bond_bp_branch_dir_r0
-        )
-        bond_harmonic.params["Phosphate-Phosphate"] = dict(
-            k=par.bond_k, r0=par.bond_pp_branch_dir_r0
-        )
-
-        dihedral_per.params["Stacking"] = dict(
-            k=par.k_dihe_stacking, d=1, n=1, phi0=np.pi
-        )
-        dihedral_per.params["Direction"] = dict(
-            k=par.k_dihe_direction, d=1, n=1, phi0=3 * np.pi / 2
-        )
-
-        forcelist = [sqd, bond_harmonic, angle_harmonic, dihedral_per]
-
-    elif par.structure_type == "troubleshoot8":
-        # ------------------------------------------------------------------
-        # Same topology/parameters as troubleshoot7, but split by type
-        # for logging individual angle/dihedral energies.
-        # ------------------------------------------------------------------
-
-        bond_bp = hoomd.md.bond.Harmonic()
-        bond_pp = hoomd.md.bond.Harmonic()
-
-        # zero both types in both objects first
-        for t in ["Base-Phosphate", "Phosphate-Phosphate"]:
-            bond_bp.params[t] = dict(k=0.0, r0=1.0)
-            bond_pp.params[t] = dict(k=0.0, r0=1.0)
-
-        bond_bp.params["Base-Phosphate"] = dict(
-            k=par.bond_k, r0=par.bond_bp_branch_dir_r0
-        )
-        bond_pp.params["Phosphate-Phosphate"] = dict(
-            k=par.bond_k, r0=par.bond_pp_branch_dir_r0
-        )
-
-        angle_types = [
-            "Phosphate-Phosphate-Phosphate",
-            "Phosphate-Phosphate-Base",
-            "Base-Phosphate-Base",
-            "Base-Phosphate-Phosphate",
-        ]
-
-        # Separate angle objects
-        angle_ppp = hoomd.md.angle.Harmonic()
-        angle_ppb = hoomd.md.angle.Harmonic()
-        angle_bpb = hoomd.md.angle.Harmonic()
-        angle_bpp = hoomd.md.angle.Harmonic()
-
-        # Zero all types in all objects first
-        for t in angle_types:
-            angle_ppp.params[t] = dict(k=0.0, t0=0.0)
-            angle_ppb.params[t] = dict(k=0.0, t0=0.0)
-            angle_bpb.params[t] = dict(k=0.0, t0=0.0)
-            angle_bpp.params[t] = dict(k=0.0, t0=0.0)
-
-        # Activate only one type per object
-        angle_ppp.params["Phosphate-Phosphate-Phosphate"] = dict(
-            k=par.angle_k_ppp, t0=par.angle_branch_dir_ppp_t0
-        )
-        angle_ppb.params["Phosphate-Phosphate-Base"] = dict(
-            k=par.angle_k_ppb, t0=par.angle_branch_dir_ppb_t0
-        )
-        angle_bpb.params["Base-Phosphate-Base"] = dict(
-            k=par.angle_k_bpb, t0=par.angle_branch_dir_bpb_t0
-        )
-        angle_bpp.params["Base-Phosphate-Phosphate"] = dict(
-            k=par.angle_k_bpp,
-            t0=par.angle_branch_dir_ppp_t0 - par.angle_branch_dir_ppb_t0,
-        )
-
-        # Separate dihedral objects
-        dihedral_types = ["Stacking", "Direction"]
-
-        dihedral_stacking = hoomd.md.dihedral.Periodic()
-        dihedral_direction = hoomd.md.dihedral.Periodic()
-
-        # Zero all types first
-        for t in dihedral_types:
-            dihedral_stacking.params[t] = dict(k=0.0, d=1, n=1, phi0=0.0)
-            dihedral_direction.params[t] = dict(k=0.0, d=1, n=1, phi0=0.0)
-
-        # Activate one type per object
-        dihedral_stacking.params["Stacking"] = dict(
-            k=par.k_dihe_stacking, d=1, n=1, phi0=np.pi
-        )
-        dihedral_direction.params["Direction"] = dict(
-            k=par.k_dihe_direction, d=1, n=1, phi0=3 * np.pi / 2
-        )
-
-        forcelist = [
-            sqd,
-            bond_bp,
-            bond_pp,
-            angle_ppp,
-            angle_ppb,
-            angle_bpb,
-            angle_bpp,
-            dihedral_stacking,
-            dihedral_direction,
-        ]
-
-    elif par.structure_type == "2_particles":
-        angle_harmonic.params["Phosphate-Phosphate-Phosphate"] = dict(
-            k=par.angle_k_ppp, t0=par.angle_branch_dir_ppp_t0
-        )
-        angle_harmonic.params["Phosphate-Phosphate-Base"] = dict(
-            k=par.angle_k_ppb, t0=par.angle_branch_dir_ppb_t0
-        )
-        angle_harmonic.params["Base-Phosphate-Phosphate"] = dict(
-            k=par.angle_k_bpp,
-            t0=par.angle_branch_dir_ppp_t0 - par.angle_branch_dir_ppb_t0,
-        )
-
-        bond_harmonic.params["Base-Phosphate"] = dict(
-            k=par.bond_k, r0=par.bond_bp_branch_dir_r0
-        )
-        bond_harmonic.params["Phosphate-Phosphate"] = dict(
-            k=par.bond_k, r0=par.bond_pp_branch_dir_r0
-        )
-
-        dihedral_per.params["Stacking"] = dict(
-            k=par.k_dihe_stacking, d=1, n=1, phi0=np.pi
-        )
-
-        forcelist = [sqd, bond_harmonic, angle_harmonic, dihedral_per]
-
-        # Align angle addition
-        if align_force is not None:
-            forcelist.append(align_force)
-    
-    elif par.structure_type == "sticker_spacer":
-        # Make sure these match snapshot_sticker_spacer bond/angle type names
-        bond_harmonic.params["Base-Base"] = dict(k=par.bond_k, r0=par.bond_length)
-        angle_harmonic.params["Base-Base-Base"] = dict(
-            k=par.angle_k_ppp, t0=par.angle_branch_dir_ppp_t0
-        )  # uses PPP angle as param
-
-        forcelist = [sqd, bond_harmonic, angle_harmonic]
-
-        # No dihedrals in sticker_spacer; avoid logging a detached dihedral force (energy would be None).
-        dihedral_per = None
-
-    else:
-        raise ValueError(f"Unsupported structure_type: {par.structure_type}")
-
-    force_objs = {
+    force_objs: ForceObjects = {
         "sqd": sqd,
         "bond_harmonic": bond_harmonic,
-        "angle_harmonic": angle_harmonic,  # used by ts7 / 2_particles
-        "dihedral_per": dihedral_per,  # used by ts7 / 2_particles
-        "bond_bp": bond_bp,
-        "bond_pp": bond_pp,
-        "angle_ppp": angle_ppp,  # used by ts8
-        "angle_ppb": angle_ppb,  # used by ts8
-        "angle_bpb": angle_bpb,  # used by ts8
-        "angle_bpp": angle_bpp,  # used by ts8
-        "dihedral_stacking": dihedral_stacking,  # used by ts8
-        "dihedral_direction": dihedral_direction,  # used by ts8
-        "align_force": align_force,
+        "angle_harmonic": angle_harmonic,
     }
-    return forcelist, force_objs
+
+    print("Model forces initialized.")
+
+    return forces, force_objs
 
 
-def setup_integrator(par, forces):
-    """
-    """
-
-    if par.thermostat == "langevin":
-        method = hoomd.md.methods.Langevin(filter=hoomd.filter.All(), kT=par.kT)
-        for (
-            t
-        ) in (
-            par.type_names
-        ):  # Change possible: assign per-type drag coefficients (gamma)
-            method.gamma[t] = par.gamma
-    elif par.thermostat == "DPD":
-        method = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
-        nlist = hoomd.md.nlist.Cell(buffer=par.buffer)
-        dpd = hoomd.md.pair.DPD(nlist=nlist, kT=par.kT, default_r_cut=par.dpd_r_cut)
-        for a in par.type_names:
-            for b in par.type_names:
-                dpd.params[(a, b)] = dict(A=0.0, gamma=par.gamma)  # new param for dpd?
-        forces.append(dpd)  # in place chane? unsafe
-    else:
-        raise ValueError(f"Unknown thermostat: {par.thermostat}")
-
-    integrator = hoomd.md.Integrator(  # Build the integrator
-        dt=par.dt, methods=[method], forces=forces  # time step
+def setup_langevin_method(par: argparse.Namespace) -> Any:
+    """Create a Langevin constant-volume method with per-type drag coefficients."""
+    method = hoomd.md.methods.Langevin(
+        filter=hoomd.filter.All(),
+        kT=float(par.kT),
     )
-    # Align angle (rotational_dof enabled)
-    integrator.integrate_rotational_dof = bool(getattr(par, "use_align_angle", False))
+
+    for particle_type in par.type_names:
+        method.gamma[particle_type] = float(par.gamma)
+
+    print("Langevin thermostat configured.")
+    print(f"  kT: {float(par.kT):g}")
+    print(f"  gamma: {float(par.gamma):g}")
+
+    return method
+
+
+def setup_dpd_force(par: argparse.Namespace) -> Any:
+    """Create a zero-conservative-force DPD thermostat force."""
+    nlist = hoomd.md.nlist.Cell(buffer=float(par.buffer))
+
+    dpd = hoomd.md.pair.DPD(
+        nlist=nlist,
+        kT=float(par.kT),
+        default_r_cut=float(par.dpd_r_cut),
+    )
+
+    for t1 in par.type_names:
+        for t2 in par.type_names:
+            dpd.params[(t1, t2)] = {
+                "A": 0.0,
+                "gamma": float(par.gamma),
+            }
+
+    print("DPD thermostat force configured.")
+    print(f"  kT: {float(par.kT):g}")
+    print(f"  gamma: {float(par.gamma):g}")
+    print(f"  dpd_r_cut: {float(par.dpd_r_cut):g}")
+
+    return dpd
+
+
+def setup_integrator(
+    par: argparse.Namespace,
+    forces: Sequence[Any],
+) -> Any:
+    """Build the HOOMD integrator with the requested thermostat."""
+    integrator_forces = list(forces)
+    thermostat = str(par.thermostat).lower()
+
+    if thermostat == "langevin":
+        method = setup_langevin_method(par)
+
+    elif thermostat == "dpd":
+        method = hoomd.md.methods.ConstantVolume(filter=hoomd.filter.All())
+        integrator_forces.append(setup_dpd_force(par))
+
+    else:
+        raise ValueError(
+            f"Unknown thermostat {par.thermostat!r}. "
+            "Supported values are 'langevin' and 'DPD'."
+        )
+
+    integrator = hoomd.md.Integrator(
+        dt=float(par.dt),
+        methods=[method],
+        forces=integrator_forces,
+    )
+
+    integrator.integrate_rotational_dof = False
+
+    print("Integrator configured.")
+    print(f"  thermostat: {par.thermostat}")
+    print(f"  dt: {float(par.dt):g}")
+    print(f"  number of forces: {len(integrator_forces)}")
 
     return integrator
 
 
-def setup_simulation(snapshot=None, restart_from=None, restart_frame=-1, seed = 4):
-
-    sim = hoomd.Simulation(device=hoomd.device.GPU(), seed=seed)
-    if restart_from is not None:
-        sim.create_state_from_gsd(filename=str(restart_from), frame=restart_frame)
-        print(
-            f"Simulation created from restart: {restart_from} (frame {restart_frame})"
-        )
-    elif snapshot is not None:
-        sim.create_state_from_snapshot(snapshot)
-        print("Simulation created from fresh snapshot.")
-    else:
+def setup_simulation(
+    snapshot: gsd.hoomd.Frame | None = None,
+    restart_from: str | Path | None = None,
+    restart_frame: int = -1,
+    seed: int = 4,
+) -> hoomd.Simulation:
+    """Create a HOOMD simulation from a fresh snapshot or a restart GSD."""
+    if snapshot is None and restart_from is None:
         raise ValueError("Provide either snapshot or restart_from.")
+
+    if snapshot is not None and restart_from is not None:
+        raise ValueError("Provide snapshot or restart_from, not both.")
+
+    sim = hoomd.Simulation(
+        device=hoomd.device.GPU(),
+        seed=int(seed),
+    )
+
+    if restart_from is not None:
+        sim.create_state_from_gsd(
+            filename=str(restart_from),
+            frame=int(restart_frame),
+        )
+        print(
+            f"Simulation created from restart: {restart_from} "
+            f"(frame {restart_frame})"
+        )
+        return sim
+
+    sim.create_state_from_snapshot(snapshot)
+    print("Simulation created from fresh snapshot.")
 
     return sim
 
 
-def add_logger(sim, par, force_objs):
+def add_logger(
+    sim: hoomd.Simulation,
+    par: argparse.Namespace,
+    force_objs: ForceObjects,
+) -> tuple[Any, Any]:
+    """Attach scalar logging for runtime, thermodynamics, and optional energies."""
     logger = hoomd.logging.Logger(categories=["scalar"])
     logger.add(sim, quantities=["timestep", "tps"])
 
     runtime_clock = RuntimeClock()
     logger.add(runtime_clock, quantities=["walltime"])
-    
-    thermo = hoomd.md.compute.ThermodynamicQuantities(filter=hoomd.filter.All())
+
+    thermo = hoomd.md.compute.ThermodynamicQuantities(
+        filter=hoomd.filter.All(),
+    )
     sim.operations.computes.append(thermo)
-    # Kinetic energy
+
     logger.add(
         thermo,
         quantities=[
@@ -328,83 +291,109 @@ def add_logger(sim, par, force_objs):
             "kinetic_temperature",
         ],
     )
-    # No energy logging if log_energies = True
-    if not par.log_energies:
-        print("Logger created.")
-        return logger, thermo
-    
-    # Energy logging if log_energies = True
-    logger.add(thermo, quantities=["potential_energy"])
-    logger.add(force_objs["sqd"], quantities=["energy"])
 
-    # troubleshoot8: split bond objects
-    if force_objs.get("bond_bp") is not None:
-        logger.add(force_objs["bond_bp"], quantities=["energy"])
-        logger.add(force_objs["bond_pp"], quantities=["energy"])
-    else:
+    if bool(par.log_energies):
+        logger.add(thermo, quantities=["potential_energy"])
+        logger.add(force_objs["sqd"], quantities=["energy"])
         logger.add(force_objs["bond_harmonic"], quantities=["energy"])
-
-    # troubleshoot8: split angle objects
-    if force_objs.get("angle_ppb") is not None:
-        logger.add(force_objs["angle_ppp"], quantities=["energy"])
-        logger.add(force_objs["angle_ppb"], quantities=["energy"])
-        logger.add(force_objs["angle_bpb"], quantities=["energy"])
-        logger.add(force_objs["angle_bpp"], quantities=["energy"])
+        logger.add(force_objs["angle_harmonic"], quantities=["energy"])
+        print("Logger created with energy logging.")
     else:
-        logger.add(force_objs["angle_harmonic"], quantities=["energy"])  # ts7
+        print("Logger created without per-force energy logging.")
 
-    # troubleshoot8: split dihedral objects
-    if force_objs.get("dihedral_stacking") is not None:
-        logger.add(force_objs["dihedral_stacking"], quantities=["energy"])
-        logger.add(force_objs["dihedral_direction"], quantities=["energy"])
-    elif force_objs.get("dihedral_per") is not None:
-        logger.add(force_objs["dihedral_per"], quantities=["energy"])  # ts7
-    if force_objs["align_force"] is not None:
-        logger.add(force_objs["align_force"], quantities=["energy"])
-
-    print("Logger created.")
     return logger, thermo
 
 
-def add_writer(sim, par, logger):
+def add_writer(
+    sim: hoomd.Simulation,
+    par: argparse.Namespace,
+    logger: Any,
+) -> Any:
+    """Attach a periodic GSD trajectory writer to the simulation."""
+    output_dir = Path(par.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = output_dir / f"trajectory{par.suffix}.gsd"
 
     gsd_writer = hoomd.write.GSD(
-        filename=f"{par.output_dir}/trajectory{par.suffix}.gsd",
-        trigger=hoomd.trigger.Periodic(par.N_write),
+        filename=str(filename),
+        trigger=hoomd.trigger.Periodic(int(par.N_write)),
         mode="wb",
-        dynamic=["property", "momentum"],  # saves positions, velocities, etc.
+        dynamic=["property", "momentum"],
         logger=logger,
     )
+
     sim.operations.writers.append(gsd_writer)
+
     print("GSD writer created.")
+    print(f"  filename: {filename}")
+    print(f"  write period: {int(par.N_write)}")
+
     return gsd_writer
 
 
-def add_progress_printer(sim, logger, period=100_000):
+def add_progress_printer(
+    sim: hoomd.Simulation,
+    logger: Any,
+    period: int = 100_000,
+) -> Any:
+    """Attach a periodic table writer for console progress output."""
     table = hoomd.write.Table(
-        trigger=hoomd.trigger.Periodic(period),
+        trigger=hoomd.trigger.Periodic(int(period)),
         logger=logger,
     )
+
     sim.operations.writers.append(table)
+
+    print("Progress table writer created.")
+    print(f"  period: {int(period)}")
+
     return table
 
-def run_simulation(sim, par, thermo):
-    """Run simulation and optionally stop if KE per particle exceeds threshold."""
+
+def run_simulation(
+    sim: hoomd.Simulation,
+    par: argparse.Namespace,
+    thermo: Any,
+) -> None:
+    """Run the simulation, optionally stopping on high kinetic energy per particle."""
+    n_steps = int(par.N_steps)
+    if n_steps < 0:
+        raise ValueError(f"N_steps must be non-negative, got {n_steps}.")
 
     max_ke_per_particle_stop = par.max_ke_per_particle_stop
 
+    print("Starting simulation run.")
+    print(f"  N_steps: {n_steps}")
+    print(f"  current timestep: {sim.timestep}")
+
     if max_ke_per_particle_stop is None:
-        sim.run(par.N_steps)
+        sim.run(n_steps)
+        print(f"Simulation finished at timestep {sim.timestep}.")
         return
-    
-    # KE stopping
-    start_check_after_steps = 100_000 # initial KE blow ups ignored
-    check_period = par.N_write # check KE is not blowing up every N_write steps
+
+    max_ke_per_particle_stop = float(max_ke_per_particle_stop)
+    if max_ke_per_particle_stop <= 0:
+        raise ValueError(
+            "max_ke_per_particle_stop must be positive when enabled, "
+            f"got {max_ke_per_particle_stop}."
+        )
+
+    start_check_after_steps = 100_000
+    check_period = int(par.N_write)
+
+    if check_period <= 0:
+        raise ValueError(f"N_write must be positive, got {check_period}.")
+
+    print("Kinetic-energy stopping enabled.")
+    print(f"  max KE/N: {max_ke_per_particle_stop:g}")
+    print(f"  checking after timestep: {start_check_after_steps}")
+    print(f"  check period: {check_period}")
 
     steps_done = 0
 
-    while steps_done < par.N_steps:
-        steps_to_run = min(check_period, par.N_steps - steps_done)
+    while steps_done < n_steps:
+        steps_to_run = min(check_period, n_steps - steps_done)
         sim.run(steps_to_run)
         steps_done += steps_to_run
 
@@ -416,6 +405,9 @@ def run_simulation(sim, par, thermo):
         if thermo.kinetic_energy > max_ke:
             print(
                 f"Stopped early at timestep {sim.timestep}: "
-                f"KE/N exceeded {max_ke_per_particle_stop}"
+                f"KE/N exceeded {max_ke_per_particle_stop:g}. "
+                f"Total KE={thermo.kinetic_energy:g}, threshold={max_ke:g}."
             )
             break
+
+    print(f"Simulation run ended at timestep {sim.timestep}.")

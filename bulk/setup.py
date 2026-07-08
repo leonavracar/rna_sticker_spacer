@@ -1,707 +1,205 @@
-import math 
+"""Setup utilities for the one-particle A/U/G/C sticker-spacer model.
+
+This module contains:
+- molecule JSON parsing,
+- SQD pair parameter assignment,
+- random-walk initialization,
+- bond/angle topology creation.
+
+Model vocabulary such as particle types, bond types, angle types, and complements
+is expected to be attached to ``par`` from ``params.base_info()``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any, TypeAlias
+
 import gsd.hoomd
 import numpy as np
-import json
-import argparse
-
-# Counts how many times define_pairwise_sqd was called, used to print parameters only once
-_sqd_init_count = 0
-
-DEFAULT_NONSPECIFIC_NCUT = 12
-#### SETUP BASE SEQUENCE ####
+from numpy.typing import NDArray
 
 
-def parse_molecules(file="molecules.json"):
-    with open(file) as f:
-        d = json.load(f)
+ParticleType: TypeAlias = str
+Sequence1P: TypeAlias = list[ParticleType]
+Vector3: TypeAlias = tuple[float, float, float]
 
-    mlc_list = []
-    for mlc_type in d:
-        for _ in range(mlc_type["count"]):
-            mlc_list.append(list(mlc_type["sequence"]))
 
-    return mlc_list
+def parse_molecules(file: str | Path = "molecules.json") -> list[Sequence1P]:
+    """Read molecule definitions from JSON and expand counts into sequence lists."""
+    path = Path(file)
 
-def invert_dict(d):
-    inv_d = {}
-    for k in d.keys():
-        inv_d[d[k]] = k
-        print(k)
-    return inv_d
+    with path.open() as handle:
+        molecule_defs = json.load(handle)
 
-def reverse_complement(base_seq, par):
+    molecules: list[Sequence1P] = []
+
+    for mol_idx, mol_def in enumerate(molecule_defs):
+        count = int(mol_def["count"])
+        sequence = mol_def["sequence"]
+
+        if count < 0:
+            raise ValueError(
+                f"Molecule definition {mol_idx} has negative count: {count}."
+            )
+
+        if isinstance(sequence, str):
+            sequence_list = list(sequence)
+        else:
+            sequence_list = list(sequence)
+
+        if not sequence_list:
+            raise ValueError(
+                f"Molecule definition {mol_idx} has an empty sequence.")
+
+        molecules.extend(sequence_list.copy() for _ in range(count))
+
+    if not molecules:
+        raise ValueError(f"No molecules were loaded from {path}.")
+
+    return molecules
+
+
+def validate_model_info(par: argparse.Namespace) -> None:
+    """Validate fixed model metadata loaded from params.base_info()."""
+    required_attrs = [
+        "type_names",
+        "complements",
+        "bond_types",
+        "angle_types",
+    ]
+
+    missing_attrs = [name for name in required_attrs if not hasattr(par, name)]
+    if missing_attrs:
+        raise AttributeError(
+            "Missing model metadata on par: "
+            f"{missing_attrs}. Attach params.base_info() after parsing arguments."
+        )
+
+    if list(par.bond_types) != ["Base-Base"]:
+        raise ValueError(
+            f"Expected one bond type ['Base-Base'], got {par.bond_types}.")
+
+    if list(par.angle_types) != ["Base-Base-Base"]:
+        raise ValueError(
+            f"Expected one angle type ['Base-Base-Base'], got {par.angle_types}."
+        )
+
+
+def validate_sequences(
+    sequences: Sequence[Sequence[ParticleType]],
+    type_names: Sequence[ParticleType],
+) -> None:
+    """Validate that all sequences are non-empty and contain known particle types."""
+    allowed_types = set(type_names)
+
+    if not sequences:
+        raise ValueError("At least one molecule sequence is required.")
+
+    for mol_idx, sequence in enumerate(sequences):
+        if not sequence:
+            raise ValueError(f"Sequence {mol_idx} is empty.")
+
+        unknown_types = sorted(set(sequence) - allowed_types)
+        if unknown_types:
+            raise ValueError(
+                f"Sequence {mol_idx} contains unknown particle type(s): {unknown_types}. "
+                f"Allowed types are: {list(type_names)}."
+            )
+
+
+def validate_sqd_cutoffs(par: argparse.Namespace) -> None:
+    """Fail clearly if the neighbor-list cutoff is too small for SQD density cutoff."""
+    if float(par.nlist_rcut) < float(par.density_upper_rcut):
+        raise ValueError(
+            "nlist_rcut is smaller than density_upper_rcut. "
+            f"Got nlist_rcut={float(par.nlist_rcut):g}, "
+            f"density_upper_rcut={float(par.density_upper_rcut):g}. "
+            "Increase nlist_rcut so the neighbor list covers the SQD density cutoff."
+        )
+
+
+def is_wc_pair(
+    t1: ParticleType,
+    t2: ParticleType,
+    complements: Mapping[ParticleType, ParticleType],
+) -> bool:
+    """Return True if two particle types are Watson-Crick complements."""
+    return complements.get(t1) == t2 or complements.get(t2) == t1
+
+
+def sqd_param_dict(
+    par: argparse.Namespace,
+    attraction: float,
+    ncut: float,
+) -> dict[str, float]:
+    """Create one SQD parameter dictionary from an attraction magnitude and valency."""
+    return {
+        "A": float(par.E_rep),
+        "B": -float(attraction),
+        "attr_rcut": float(par.r_att),
+        "rep_rcut": float(par.r_rep),
+        "density_upper_rcut": float(par.density_upper_rcut),
+        "density_lower_rcut": float(par.density_lower_rcut),
+        "ncut_ij": float(ncut),
+        "ncut_ji": float(ncut),
+    }
+
+
+def define_pairwise_sqd_sticker_spacer(sqd: Any, par: argparse.Namespace) -> None:
+    """Assign SQD interactions for the A/U/G/C sticker-spacer model.
+
+    Watson-Crick pairs receive attraction ``E_att`` and valency ``ncut_wc``.
+    All other pairs are repulsive-only, with ``B = 0``.
+
+    This function modifies ``sqd.params`` in place.
     """
-    Given a list of bases, return its reverse complement.
-    For example, ['A','T','G'] -> ['C','A','T'].
-    """
-    return [par.complements_original[b] for b in reversed(base_seq)]
+    validate_model_info(par)
+    validate_sqd_cutoffs(par)
 
-def insert_backbone_duplicate_types(sequence,par):
-    """
-    Given a list of bases, return a new list where
-    a backbone 'B' is placed before each base.
-    Example: ['A','T'] -> ['B','A','B','T'].
-    """
-    seq_with_backbone = []
-    for b in sequence:
-        seq_with_backbone.append("B")
-        seq_with_backbone += par.duplicates[b]
-    return seq_with_backbone
+    complements: Mapping[ParticleType, ParticleType] = par.complements
 
-def insert_backbone(sequence):
-    """
-    Given a list of bases, return a new list where
-    a backbone 'B' is placed before each base.
-    Example: ['A','T'] -> ['B','A', 'B', 'T'].
-    """
-    seq_with_backbone = []
-    for b in sequence:
-        seq_with_backbone.append("B")
-        seq_with_backbone.append(b)
-    return seq_with_backbone
-
-def define_pairwise_sqd_v2(sqd, par):
-    """SQD v2 = higher/lower distance cutoff for r_d, overlapping with attraction radius partially.
-    Interaction setup (intended):
-      - Base-base:
-          * WC directional (complements): A1-U1, A2-U2 ... (AGCU all have same attraction E_att)
-          * non-WC directional (non_wc_complements): directional A1-G1/C1/A1
-          * WC nondirectional (wc_nondirectional): A1-U2, A2-U1...B=0, repulsion (A) can be tuned
-          * ALL other nondirectional base-base (repulsion-only, base cutoffs, high ncut so it doesn't compete with pairing
-      - Backbone-base:
-          repulsion-only, standard cutoffs, high ncut
-      - Backbone-backbone:
-          weak attraction and repulsion
-    """
-    print("define_pairwise_sqd_v2 called")
-    #global _sqd_init_count
-    #_sqd_init_count += 1
-    #verbose = (_sqd_init_count == 1)
-
-    # Get pairs from dictionaries
-    complements = par.complements  # WC directional pairs A1-U1...
-    non_wc = par.non_wc_complements  # nonwc directional pairs A1-A1, A1-C1...
-    # all_nondir = par.all_nondirectional # all remaining nondirectional interactions A1-A2 (nonwc), A1-U2 (wc)...
-
-    for i, t1 in enumerate(par.type_names):
-        for t2 in par.type_names[i:]:
-
-            t1_is_base = (t1 in complements)
-            t2_is_base = (t2 in complements)
-
-            # -----------------------
-            # Base–Base interactions
-            # -----------------------
-            if t1_is_base and t2_is_base:
-
-                # 1) WC directional
-                if complements.get(t1) == t2:
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_scaled,          # scaled with beta
-                        B=par.E_att_comp,               # negative scaled
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_upper_rcut=par.density_upper_rcut_base,  # 0.807
-                        density_lower_rcut=par.density_lower_rcut_base,  # 0.48
-                        ncut_ij=par.ncut_ij_comp,  
-                        ncut_ji=par.ncut_ij_comp, 
-                    )
-                    print(
-                            f"[WC_dir] {t1}-{t2}: A={par.E_rep_wc_scaled}, B={par.E_att_comp}, ncut={par.ncut_ij_comp}")
-
-                # 2) non-WC directional
-                elif (t2 in non_wc.get(t1, [])) or (t1 in non_wc.get(t2, [])):
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_scaled,
-                        B=par.E_att_nonwc,
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_upper_rcut=par.density_upper_rcut_base,
-                        density_lower_rcut=par.density_lower_rcut_base,
-                        ncut_ij=par.ncut_ij_nonwc,  # 1
-                        ncut_ji=par.ncut_ij_nonwc,  # 1
-                    )
-                    print(
-                            f"[nonWC_dir] {t1}-{t2}: A={par.E_rep_wc_scaled}, B={par.E_att_nonwc}, ncut={par.ncut_ij_nonwc}")
-
-                # WC non-directional interaction (A1-U2, U1-A2, etc.)
-                elif (
-                    (t1 in par.wc_nondirectional and par.wc_nondirectional[t1] == t2) or
-                    (t2 in par.wc_nondirectional and par.wc_nondirectional[t2] == t1)
-                ):
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_nondir_scaled,  # <- different rep hrere
-                        B=0.0,
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_upper_rcut=par.density_upper_rcut_base,
-                        density_lower_rcut=par.density_lower_rcut_base,
-                        ncut_ij=par.ncut_ij_wc_nondir,
-                        ncut_ji=par.ncut_ij_wc_nondir,
-                    )
-                    print(
-                            f"[wc_nondir] {t1}-{t2}: A={par.E_rep_wc_nondir_scaled}, B=0, ncut={par.ncut_ij_wc_nondir}")
-                        # 3) default base-base (repulsion-only, base cutoffs)
-                else:
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_scaled,
-                        B=0.0,
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_upper_rcut=par.density_upper_rcut_base,
-                        density_lower_rcut=par.density_lower_rcut_base,
-                        ncut_ij=12,
-                        ncut_ji=12,
-                    )
-                    print(
-                            f"[base_default] {t1}-{t2}: A={par.E_rep_wc_scaled}, B=0, ncut=12")
-
-            # -----------------------
-            # Backbone–Backbone
-            # -----------------------
-            elif t1 == t2:
-                sqd.params[(t1, t2)] = dict(
-                    A=par.E_rep_scaled,
-                    B=par.E_att_back_scaled,
-                    attr_rcut=par.r_att,
-                    rep_rcut=par.r_rep,
-                    density_upper_rcut=par.density_upper_rcut,
-                    density_lower_rcut=par.density_lower_rcut,
-                    ncut_ij=par.ncut_ij_back,  # 12
-                    ncut_ji=par.ncut_ij_back,  # 12
-                )
-                print(
-                        f"[back-back] {t1}-{t2}: A={par.E_rep_scaled}, B={par.E_att_back_scaled}, ncut={par.ncut_ij_back}")
-
-            # -----------------------
-            # Backbone–Base
-            # -----------------------
-            else:
-                sqd.params[(t1, t2)] = dict(
-                    A=par.E_rep_scaled,        # to not have overlaps
-                    B=0.0,              # NO attraction
-                    attr_rcut=par.r_att,
-                    rep_rcut=par.r_rep,
-                    density_upper_rcut=par.density_upper_rcut,
-                    density_lower_rcut=par.density_lower_rcut,
-                    ncut_ij=DEFAULT_NONSPECIFIC_NCUT,
-                    ncut_ji=DEFAULT_NONSPECIFIC_NCUT,
-                )
-                print(
-                        f"[back-base] {t1}-{t2}: A={par.E_rep_scaled}, B=0, ncut=12")
-
-
-def define_pairwise_sqd_v1(sqd, par):
-    """SQD v1 = one r_d for the distance cutoff. SQD v2 has higher/lower cutoff for density.
-    Interaction setup(intended):
-      - Base-base:
-          * WC directional(complements): A1-U1, A2-U2 ... (AGCU all have same attraction E_att)
-          * non-WC directional(non_wc_complements): directional A1-G1/C1/A1
-          * WC nondirectional(wc_nondirectional): A1-U2, A2-U1...B = 0, repulsion(A) can be tuned
-          * ALL other nondirectional base-base(repulsion-only, base cutoffs, high ncut so it doesn't compete with pairing
-      - Backbone-base:
-          repulsion-only, standard cutoffs, high ncut
-      - Backbone-backbone:
-          weak attraction and repulsion
-    """
-    print("define_pairwise_sqd_v1 called")
-    global _sqd_init_count
-    _sqd_init_count += 1
-    verbose = (_sqd_init_count == 1)
-
-    # Get pairs from dictionaries
-    complements = par.complements # WC directional pairs A1-U1...
-    non_wc = par.non_wc_complements # nonwc directional pairs A1-A1, A1-C1...
-    #all_nondir = par.all_nondirectional # all remaining nondirectional interactions A1-A2 (nonwc), A1-U2 (wc)...
-
-    for i, t1 in enumerate(par.type_names):
-        for t2 in par.type_names[i:]:
-
-            t1_is_base = (t1 in complements)
-            t2_is_base = (t2 in complements)
-
-            # -----------------------
-            # Base–Base interactions
-            # -----------------------
-            if t1_is_base and t2_is_base:
-
-                # 1) WC directional
-                if complements.get(t1) == t2:
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_scaled,          # scaled with beta
-                        B=par.E_att_comp,               # negative scaled
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_rcut=par.r_d_base,
-                        ncut_ij=par.ncut_ij_comp, # 1
-                        ncut_ji=par.ncut_ij_comp, # 1
-                    )
-                    if verbose:
-                        print(
-                            f"[WC_dir] {t1}-{t2}: A={par.E_rep_wc_scaled}, B={par.E_att_comp}, ncut={par.ncut_ij_comp}")
-
-
-                # 2) non-WC directional
-                elif (t2 in non_wc.get(t1, [])) or (t1 in non_wc.get(t2, [])):
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_scaled,
-                        B=par.E_att_nonwc,
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_rcut=par.r_d_base,
-                        ncut_ij=par.ncut_ij_nonwc, # 1
-                        ncut_ji=par.ncut_ij_nonwc, # 1
-                    )
-                    if verbose:
-                        print(
-                            f"[nonWC_dir] {t1}-{t2}: A={par.E_rep_wc_scaled}, B={par.E_att_nonwc}, ncut={par.ncut_ij_nonwc}")
-
-                # WC non-directional interaction (A1-U2, U1-A2, etc.)
-                elif (
-                    (t1 in par.wc_nondirectional and par.wc_nondirectional[t1] == t2) or
-                    (t2 in par.wc_nondirectional and par.wc_nondirectional[t2] == t1)
-                ):
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_nondir_scaled,  # <- different rep hrere
-                        B=0.0,
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_rcut=par.r_d_base,
-                        ncut_ij=par.ncut_ij_wc_nondir,
-                        ncut_ji=par.ncut_ij_wc_nondir,
-                    )
-                    if verbose:
-                        print(
-                            f"[wc_nondir] {t1}-{t2}: A={par.E_rep_wc_nondir_scaled}, B=0, ncut={par.ncut_ij_wc_nondir}")
-                                # 3) default base-base (repulsion-only, base cutoffs)
-                else:
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_scaled,
-                        B=0.0,
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_rcut=par.r_d_base,
-                        ncut_ij=DEFAULT_NONSPECIFIC_NCUT,
-                        ncut_ji=DEFAULT_NONSPECIFIC_NCUT,
-                    )
-                    if verbose:
-                        print(
-                            f"[base_default] {t1}-{t2}: A={par.E_rep_wc_scaled}, B=0, ncut=12")
-
-            # -----------------------
-            # Backbone–Backbone
-            # -----------------------
-            elif t1 == t2:
-                sqd.params[(t1, t2)] = dict(
-                    A=par.E_rep_scaled,
-                    B=par.E_att_back_scaled,
-                    attr_rcut=par.r_att,
-                    rep_rcut=par.r_rep,
-                    density_rcut=par.r_d,
-                    ncut_ij=par.ncut_ij_back, # 12
-                    ncut_ji=par.ncut_ij_back, # 12
-                )
-                if verbose:
-                    print(
-                        f"[back-back] {t1}-{t2}: A={par.E_rep_scaled}, B={par.E_att_back_scaled}, ncut={par.ncut_ij_back}")
-
-            # -----------------------
-            # Backbone–Base
-            # -----------------------
-            else:
-                sqd.params[(t1, t2)] = dict(
-                    A=par.E_rep_scaled,        # to not have overlaps
-                    B=0.0,              # NO attraction
-                    attr_rcut=par.r_att,
-                    rep_rcut=par.r_rep,
-                    density_rcut=par.r_d,
-                    ncut_ij=DEFAULT_NONSPECIFIC_NCUT,
-                    ncut_ji=DEFAULT_NONSPECIFIC_NCUT,
-                )
-                if verbose:
-                    print(
-                        f"[back-base] {t1}-{t2}: A={par.E_rep_scaled}, B=0, ncut=12")
-
-
-def define_pairwise_sqd_2_particles(sqd, par):
-    """SQD (used to be v3) for the alternating 2-bead-per-nucleotide model.
-
-    Interaction setup:
-      - Base-base:
-          * WC 
-          * non-WC
-          * all other base-base pairs are repulsion-only
-      - Backbone-backbone:
-          weak attraction + repulsion
-      - Backbone-base:
-          repulsion-only
-    """
-    print("define_pairwise_sqd_2_particles called")
-
-
-    complements = par.complements
-    non_wc = par.non_wc_complements
-
-    for i, t1 in enumerate(par.type_names):
-        for t2 in par.type_names[i:]:
-
-            t1_is_base = (t1 in complements)
-            t2_is_base = (t2 in complements)
-
-            # -----------------------
-            # Base-Base interactions
-            # -----------------------
-            if t1_is_base and t2_is_base:
-
-                # 1) WC 
-                if complements.get(t1) == t2:
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_scaled,
-                        B=par.E_att_comp,
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_upper_rcut=par.density_upper_rcut_base,
-                        density_lower_rcut=par.density_lower_rcut_base,
-                        ncut_ij=par.ncut_ij_comp,
-                        ncut_ji=par.ncut_ij_comp,
-                    )
-                    print(
-                            f"[WC] {t1}-{t2}: "
-                            f"A={par.E_rep_wc_scaled}, B={par.E_att_comp}, "
-                            f"ncut={par.ncut_ij_comp}"
-                        )
-
-                # 2) non-WC 
-                elif (t2 in non_wc.get(t1, [])) or (t1 in non_wc.get(t2, [])):
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_scaled,
-                        B=par.E_att_nonwc,
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_upper_rcut=par.density_upper_rcut_base,
-                        density_lower_rcut=par.density_lower_rcut_base,
-                        ncut_ij=par.ncut_ij_nonwc,
-                        ncut_ji=par.ncut_ij_nonwc,
-                    )
-                    print(
-                            f"[nonWC] {t1}-{t2}: "
-                            f"A={par.E_rep_wc_scaled}, B={par.E_att_nonwc}, "
-                            f"ncut={par.ncut_ij_nonwc}"
-                        )
-
-                # 3) default base-base
-                else:
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_scaled,
-                        B=0.0,
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_upper_rcut=par.density_upper_rcut_base,
-                        density_lower_rcut=par.density_lower_rcut_base,
-                        ncut_ij=12,
-                        ncut_ji=12,
-                    )
-                    print(
-                            f"[base_default] {t1}-{t2}: "
-                            f"A={par.E_rep_wc_scaled}, B=0, ncut=12"
-                        )
-
-            # -----------------------
-            # Backbone-Backbone
-            # -----------------------
-            elif t1 == t2:
-                sqd.params[(t1, t2)] = dict(
-                    A=par.E_rep_scaled,
-                    B=par.E_att_back_scaled,
-                    attr_rcut=par.r_att,
-                    rep_rcut=par.r_rep,
-                    density_upper_rcut=par.density_upper_rcut,
-                    density_lower_rcut=par.density_lower_rcut,
-                    ncut_ij=par.ncut_ij_back,
-                    ncut_ji=par.ncut_ij_back,
-                )
-                print(
-                        f"[back-back] {t1}-{t2}: "
-                        f"A={par.E_rep_scaled}, B={par.E_att_back_scaled}, "
-                        f"ncut={par.ncut_ij_back}"
-                    )
-
-            # -----------------------
-            # Backbone-Base
-            # -----------------------
-            else:
-                sqd.params[(t1, t2)] = dict(
-                    A=par.E_rep_scaled,
-                    B=0.0,
-                    attr_rcut=par.r_att,
-                    rep_rcut=par.r_rep,
-                    density_upper_rcut=par.density_upper_rcut,
-                    density_lower_rcut=par.density_lower_rcut,
-                    ncut_ij=DEFAULT_NONSPECIFIC_NCUT,
-                    ncut_ji=DEFAULT_NONSPECIFIC_NCUT,
-                )
-                print(
-                        f"[back-base] {t1}-{t2}: "
-                        f"A={par.E_rep_scaled}, B=0, "
-                        f"ncut={DEFAULT_NONSPECIFIC_NCUT}"
-                    )
-
-
-def define_pairwise_sqd_v2_brothers(sqd, par):
-    """
-    Compared to sqd_v2, v2_brothers separates the two 'brother' families.
-
-    Intended behavior:
-      - complements_1: main attractive WC patch (e.g. A1-U1, G1-C1)
-      - complements_2: second brother family, independently tunable
-                       (can be non-attractive, weakly attractive, different cutoffs, etc.)
-      - non_wc_complements: directional non-WC interactions
-      - wc_nondirectional: cross-family WC-like contacts (e.g. A1-U2, A2-U1), usually repulsive-only
-      - other base-base: repulsive-only
-      - backbone-backbone: weak attraction / repulsion
-      - backbone-base: repulsive-only
-    """
-    print("define_pairwise_sqd_v2_brothers called")
-
-    global _sqd_init_count
-    _sqd_init_count += 1
-    verbose = (_sqd_init_count == 1)
-
-    complements_1 = par.complements_1
-    complements_2 = par.complements_2
-    non_wc = par.non_wc_complements
-    wc_nondir = par.wc_nondirectional
-
-    # Any type that appears in either brother complement map is treated as a base-like type
-    base_types = set(complements_1) | set(complements_2)
-
-    for i, t1 in enumerate(par.type_names):
-        for t2 in par.type_names[i:]:
-
-            t1_is_base = t1 in base_types
-            t2_is_base = t2 in base_types
-
-            # -------------------------------------------------
-            # Base–Base interactions
-            # -------------------------------------------------
-            if t1_is_base and t2_is_base:
-
-                # 1) Main attractive WC patch family (brother 1)
-                if complements_1.get(t1) == t2:
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_scaled, 
-                        B=par.E_att_comp,
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_upper_rcut=par.density_upper_rcut_base,
-                        density_lower_rcut=par.density_lower_rcut_base,
-                        ncut_ij=par.ncut_ij_comp,
-                        ncut_ji=par.ncut_ij_comp,
-                    )
-                    if verbose:
-                        print(
-                            f"[WC_dir_1] {t1}-{t2}: "
-                            f"A={par.E_rep_wc_scaled}, "
-                            f"B={par.E_att_comp}, "
-                            f"ncut={par.ncut_ij_comp}"
-                        )
-
-                # 2) Secondary brother family (brother 2), independently tunable
-                elif complements_2.get(t1) == t2:
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_2_scaled,
-                        B=par.E_att_comp_2,
-                        attr_rcut=par.r_att_base_2,
-                        rep_rcut=par.r_rep_base_2,
-                        density_upper_rcut=par.density_upper_rcut_base_2,
-                        density_lower_rcut=par.density_lower_rcut_base_2,
-                        ncut_ij=par.ncut_ij_comp, # same for both brothers
-                        ncut_ji=par.ncut_ij_comp, # same for both brothers
-                    )
-                    if verbose:
-                        print(
-                            f"[WC_dir_2] {t1}-{t2}: "
-                            f"A={par.E_rep_wc_2_scaled}, "
-                            f"B={par.E_att_comp_2}, "
-                            f"ncut={par.ncut_ij_comp}"
-                        )
-
-                # 3) Directional non-WC
-                elif (t2 in non_wc.get(t1, [])) or (t1 in non_wc.get(t2, [])):
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_scaled,
-                        B=par.E_att_nonwc,
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_upper_rcut=par.density_upper_rcut_base,
-                        density_lower_rcut=par.density_lower_rcut_base,
-                        ncut_ij=par.ncut_ij_nonwc,
-                        ncut_ji=par.ncut_ij_nonwc,
-                    )
-                    if verbose:
-                        print(
-                            f"[nonWC_dir] {t1}-{t2}: "
-                            f"A={par.E_rep_wc_scaled}, "
-                            f"B={par.E_att_nonwc}, "
-                            f"ncut={par.ncut_ij_nonwc}"
-                        )
-
-                # 4) WC nondirectional cross-family contacts (e.g. A1-U2)
-                elif (
-                    (t1 in wc_nondir and wc_nondir[t1] == t2) or
-                    (t2 in wc_nondir and wc_nondir[t2] == t1)
-                ):
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_nondir_scaled,
-                        B=0.0,
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_upper_rcut=par.density_upper_rcut_base,
-                        density_lower_rcut=par.density_lower_rcut_base,
-                        ncut_ij=DEFAULT_NONSPECIFIC_NCUT,
-                        ncut_ji=DEFAULT_NONSPECIFIC_NCUT,
-                    )
-                    if verbose:
-                        print(
-                            f"[wc_nondir] {t1}-{t2}: "
-                            f"A={par.E_rep_wc_nondir_scaled}, "
-                            f"B=0.0, "
-                            f"ncut={DEFAULT_NONSPECIFIC_NCUT}"
-                        )
-
-                # 5) All other base-base contacts: repulsive only
-                else:
-                    sqd.params[(t1, t2)] = dict(
-                        A=par.E_rep_wc_scaled,
-                        B=0.0,
-                        attr_rcut=par.r_att_base,
-                        rep_rcut=par.r_rep_base,
-                        density_upper_rcut=par.density_upper_rcut_base,
-                        density_lower_rcut=par.density_lower_rcut_base,
-                        ncut_ij=DEFAULT_NONSPECIFIC_NCUT,
-                        ncut_ji=DEFAULT_NONSPECIFIC_NCUT,
-                    )
-                    if verbose:
-                        print(
-                            f"[base_default] {t1}-{t2}: "
-                            f"A={par.E_rep_wc_scaled}, "
-                            f"B=0.0, "
-                            f"ncut={DEFAULT_NONSPECIFIC_NCUT}"
-                        )
-
-            # -------------------------------------------------
-            # Backbone–Backbone
-            # -------------------------------------------------
-            elif t1 == t2:
-                sqd.params[(t1, t2)] = dict(
-                    A=par.E_rep_scaled,
-                    B=par.E_att_back_scaled,
-                    attr_rcut=par.r_att,
-                    rep_rcut=par.r_rep,
-                    density_upper_rcut=par.density_upper_rcut,
-                    density_lower_rcut=par.density_lower_rcut,
-                    ncut_ij=par.ncut_ij_back,
-                    ncut_ji=par.ncut_ij_back,
-                )
-                if verbose:
-                    print(
-                        f"[back-back] {t1}-{t2}: "
-                        f"A={par.E_rep_scaled}, "
-                        f"B={par.E_att_back_scaled}, "
-                        f"ncut={par.ncut_ij_back}"
-                    )
-
-            # -------------------------------------------------
-            # Backbone–Base
-            # -------------------------------------------------
-            else:
-                sqd.params[(t1, t2)] = dict(
-                    A=par.E_rep_scaled,
-                    B=0.0,
-                    attr_rcut=par.r_att,
-                    rep_rcut=par.r_rep,
-                    density_upper_rcut=par.density_upper_rcut,
-                    density_lower_rcut=par.density_lower_rcut,
-                    ncut_ij=DEFAULT_NONSPECIFIC_NCUT,
-                    ncut_ji=DEFAULT_NONSPECIFIC_NCUT,
-                )
-                if verbose:
-                    print(
-                        f"[back-base] {t1}-{t2}: "
-                        f"A={par.E_rep_scaled}, "
-                        f"B=0.0, "
-                        f"ncut={DEFAULT_NONSPECIFIC_NCUT}"
-                    )
-
-
-def define_pairwise_sqd_sticker_spacer(sqd, par):
-    """SQD interactions for a 1-bead-per-nucleotide model."""
     print("define_pairwise_sqd_sticker_spacer called")
-
-    complements = par.complements
-    non_wc = par.non_wc_complements
+    print(f"  type_names: {list(par.type_names)}")
+    print(f"  complements: {dict(complements)}")
+    print(f"  E_rep: {float(par.E_rep):g}")
+    print(f"  E_att: {float(par.E_att):g}")
+    print(f"  r_rep: {float(par.r_rep):g}")
+    print(f"  r_att: {float(par.r_att):g}")
+    print(f"  ncut_wc: {float(par.ncut_wc):g}")
+    print(f"  nlist_rcut: {float(par.nlist_rcut):g}")
+    print(f"  density_upper_rcut: {float(par.density_upper_rcut):g}")
+    print(f"  density_lower_rcut: {float(par.density_lower_rcut):g}")
 
     for i, t1 in enumerate(par.type_names):
         for t2 in par.type_names[i:]:
-
-            # WC interaction
-            if complements.get(t1) == t2:
-                sqd.params[(t1, t2)] = dict(
-                    A=par.E_rep_wc_scaled,
-                    B=par.E_att_comp,
-                    attr_rcut=par.r_att_base,
-                    rep_rcut=par.r_rep_base,
-                    density_upper_rcut=par.density_upper_rcut_base,
-                    density_lower_rcut=par.density_lower_rcut_base,
-                    ncut_ij=par.ncut_ij_comp,
-                    ncut_ji=par.ncut_ij_comp,
-                )
-                print(
-                    f"[WC] {t1}-{t2}: A={par.E_rep_wc_scaled}, "
-                    f"B={par.E_att_comp}, ncut={par.ncut_ij_comp}"
-                )
-
-            # non-WC interaction
-            elif (t2 in non_wc.get(t1, [])) or (t1 in non_wc.get(t2, [])):
-                sqd.params[(t1, t2)] = dict(
-                    A=par.E_rep_wc_scaled,
-                    B=par.E_att_nonwc,
-                    attr_rcut=par.r_att_base,
-                    rep_rcut=par.r_rep_base,
-                    density_upper_rcut=par.density_upper_rcut_base,
-                    density_lower_rcut=par.density_lower_rcut_base,
-                    ncut_ij=par.ncut_ij_nonwc,
-                    ncut_ji=par.ncut_ij_nonwc,
-                )
-                print(
-                    f"[nonWC] {t1}-{t2}: A={par.E_rep_wc_scaled}, "
-                    f"B={par.E_att_nonwc}, ncut={par.ncut_ij_nonwc}"
-                )
-
-            # default interaction
+            if is_wc_pair(t1=t1, t2=t2, complements=complements):
+                label = "WC"
+                attraction = float(par.E_att)
+                ncut = float(par.ncut_wc)
             else:
-                sqd.params[(t1, t2)] = dict(
-                    A=par.E_rep_wc_scaled,
-                    B=0.0,
-                    attr_rcut=par.r_att_base,
-                    rep_rcut=par.r_rep_base,
-                    density_upper_rcut=par.density_upper_rcut_base,
-                    density_lower_rcut=par.density_lower_rcut_base,
-                    ncut_ij=12,
-                    ncut_ji=12,
-                )
-                print(
-                    f"[default] {t1}-{t2}: A={par.E_rep_wc_scaled}, "
-                    f"B=0.0, ncut=12"
-                )
+                label = "default"
+                attraction = 0.0
+                ncut = float(par.ncut_wc)
+
+            sqd.params[(t1, t2)] = sqd_param_dict(
+                par=par,
+                attraction=attraction,
+                ncut=ncut,
+            )
+
+            print(
+                f"[{label}] {t1}-{t2}: "
+                f"A={float(par.E_rep):g}, B={-attraction:g}, ncut={ncut:g}"
+            )
 
 
-##### Box creation and random vector initialization
-
-def random_unit_vector_3D(rng):
-    """
-    Generate a random unit vector in 3D by sampling angles uniformly on the sphere.
-    """
+def random_unit_vector_3d(rng: np.random.Generator) -> Vector3:
+    """Sample one random unit vector uniformly on the 3D sphere."""
     theta = 2.0 * math.pi * rng.random()
     phi = math.acos(2.0 * rng.random() - 1.0)
 
@@ -711,473 +209,152 @@ def random_unit_vector_3D(rng):
 
     return (x, y, z)
 
-def random_walk_positions_3D(
-    N,
-    step_size,
-    box_size,
-    rng,
-    start_pos=(0, 0, 0),
-    max_tries=100000,
-):
-    """
-    Place N monomers in 3D via a random walk inside a cubic box centered at the origin.
-    First monomer is placed at start_pos.
-    Each subsequent monomer is step_size away in a random direction,
-    re-rolling if it exits the box boundaries.
-    """
+
+def random_walk_positions_3d(
+    n_particles: int,
+    step_size: float,
+    box_size: float,
+    rng: np.random.Generator,
+    start_pos: Sequence[float] = (0.0, 0.0, 0.0),
+    max_tries: int = 100_000,
+) -> NDArray[np.float64]:
+    """Generate a bounded 3D random walk inside a cubic simulation box."""
+    if n_particles <= 0:
+        raise ValueError(f"n_particles must be positive, got {n_particles}.")
+    if step_size <= 0:
+        raise ValueError(f"step_size must be positive, got {step_size}.")
+    if box_size <= 0:
+        raise ValueError(f"box_size must be positive, got {box_size}.")
+    if max_tries <= 0:
+        raise ValueError(f"max_tries must be positive, got {max_tries}.")
+
     half_box_size = box_size * 0.5
+    start = tuple(float(coord) for coord in start_pos)
 
-    positions = [start_pos]
+    if len(start) != 3:
+        raise ValueError("start_pos must contain exactly three coordinates.")
+    if any(abs(coord) > half_box_size for coord in start):
+        raise ValueError(
+            f"start_pos {start} lies outside the box with side length {box_size}."
+        )
 
-    for i in range(1, N):
-        success = False
-        tries = 0
+    positions: list[Vector3] = [start]
 
-        while not success and tries < max_tries:
-            tries += 1
+    for particle_idx in range(1, n_particles):
+        for _ in range(max_tries):
+            ux, uy, uz = random_unit_vector_3d(rng)
+            oldx, oldy, oldz = positions[particle_idx - 1]
 
-            ux, uy, uz = random_unit_vector_3D(rng)
-            oldx, oldy, oldz = positions[i - 1]
+            new_pos = (
+                oldx + step_size * ux,
+                oldy + step_size * uy,
+                oldz + step_size * uz,
+            )
 
-            newx = oldx + step_size * ux
-            newy = oldy + step_size * uy
-            newz = oldz + step_size * uz
-
-            if (
-                -half_box_size <= newx <= half_box_size
-                and -half_box_size <= newy <= half_box_size
-                and -half_box_size <= newz <= half_box_size
-            ):
-                positions.append((newx, newy, newz))
-                success = True
-
-        if not success:
+            if all(-half_box_size <= coord <= half_box_size for coord in new_pos):
+                positions.append(new_pos)
+                break
+        else:
             raise RuntimeError(
                 "Failed to place all monomers inside the box. "
                 "Try increasing box_size or max_tries."
             )
 
-    return np.array(positions)
+    return np.asarray(positions, dtype=np.float64)
 
 
-#### Build the Snapshot
+def snapshot_sticker_spacer(par: argparse.Namespace) -> gsd.hoomd.Frame:
+    """Build a HOOMD snapshot for the one-particle A/U/G/C model."""
+    validate_model_info(par)
 
-def snapshot_ts7(par):
-    '''
-    Like troubleshoot6 but without the phantom bonds
-    '''
+    sequences: list[Sequence1P] = [list(sequence)
+                                   for sequence in par.sequences]
+    validate_sequences(sequences=sequences, type_names=par.type_names)
 
-    sequences = [insert_backbone_duplicate_types(seq,par) for seq in par.sequences]  # list of lists
     num_mols = len(sequences)
-    lengths = [len(seq) for seq in sequences]
-    total_particles = sum(lengths)
+    total_particles = sum(len(sequence) for sequence in sequences)
+
+    density = float(par.density)
+    if density <= 0:
+        raise ValueError(f"density must be positive, got {density}.")
+
+    bond_r0 = float(par.bond_r0)
+    if bond_r0 <= 0:
+        raise ValueError(f"bond_r0 must be positive, got {bond_r0}.")
+
+    volume = total_particles / density
+    box_size = volume ** (1.0 / 3.0)
+
+    print("snapshot_sticker_spacer called")
+    print(f"  num_mols: {num_mols}")
+    print(f"  total_particles: {total_particles}")
+    print(f"  density: {density:g}")
+    print(f"  box_size: {box_size:.3f}")
+    print(f"  bond_r0: {bond_r0:g}")
+    print(f"  init_seed: {par.init_seed}")
+    print(f"  particle types: {list(par.type_names)}")
+    print(f"  bond types: {list(par.bond_types)}")
+    print(f"  angle types: {list(par.angle_types)}")
 
     snapshot = gsd.hoomd.Frame()
-
-    # Estimate total box size
-    volume = total_particles / par.density
-    box_size = volume ** (1/3)
-
     snapshot.particles.N = total_particles
-    snapshot.configuration.box = [box_size, box_size, box_size, 0, 0, 0]
-    snapshot.particles.types = par.type_names
+    snapshot.configuration.box = [box_size, box_size, box_size, 0.0, 0.0, 0.0]
+    snapshot.particles.types = list(par.type_names)
 
-    typeids = []
-    positions = []
-    velocities = []
-    bonds = []
-    angles = []
-    dihedrals = []
+    type_to_id = {name: i for i, name in enumerate(par.type_names)}
 
-    bond_types = ['Base-Phosphate', 'Phosphate-Phosphate']
-    angle_types = ['Phosphate-Phosphate-Phosphate', 'Phosphate-Phosphate-Base', 'Base-Phosphate-Base','Base-Phosphate-Phosphate']
-    dihedral_types = ['Stacking','Direction']
+    typeids: list[int] = []
+    positions: list[Vector3] = []
+    velocities: list[Vector3] = []
 
-    bond_typeid = []
-    angle_typeid = []
-    dihedral_typeid = []
+    bonds: list[list[int]] = []
+    bond_typeids: list[int] = []
+
+    angles: list[list[int]] = []
+    angle_typeids: list[int] = []
 
     offset = 0
     rng = np.random.default_rng(par.init_seed)
-    for mol_idx, sequence in enumerate(sequences):
-        N = len(sequence)
-        typeids.extend([par.type_names.index(x) for x in sequence])
 
-        # Assign a center offset for this molecule to avoid overlaps
-        center_offset = rng.uniform(-box_size / 2, box_size / 2, size=3)
-        pos = random_walk_positions_3D(
-            N=N, step_size=par.bond_length, box_size=box_size,rng=rng, start_pos=center_offset
+    for sequence in sequences:
+        n_particles = len(sequence)
+
+        typeids.extend(type_to_id[particle_type] for particle_type in sequence)
+
+        center_offset = rng.uniform(-box_size / 2.0, box_size / 2.0, size=3)
+
+        molecule_positions = random_walk_positions_3d(
+            n_particles=n_particles,
+            step_size=bond_r0,
+            box_size=box_size,
+            rng=rng,
+            start_pos=center_offset,
         )
-        positions.extend(pos)
-        velocities.extend([[0.0, 0.0, 0.0]] * N)
 
-        # Bonds
-        # B-A1
-        bonds.extend([
+        positions.extend(tuple(row) for row in molecule_positions.tolist())
+        velocities.extend([(0.0, 0.0, 0.0)] * n_particles)
+
+        molecule_bonds = [
             [offset + i, offset + i + 1]
-            for i in range(0, N, 3)
-            if i + 1 < N
-        ])
-        # B-A2
-        bonds.extend([
-            [offset + i, offset + i + 2]
-            for i in range(0, N, 3)
-            if i + 2 < N
-        ])
-        # B-B
-        bonds.extend([
-            [offset + i, offset + i + 3]
-            for i in range(0, N-3, 3)
-        ])
-        bond_typeid.extend(
-        [0] * (N // 3 * 2) + # Base - Phosphate
-        [1] * (N // 3-1) # Phosphate - Phosphate
-        ) 
-
-        # Angles
-        # Phosphate-Phosphate-Phosphate
-        angles.extend([
-            [offset + i, offset + i + 3, offset + i + 6]
-            for i in range(0, N - 6, 3)
-        ])
-        # Phosphate-Phosphate-Base
-        angles.extend([
-            [offset + i, offset + i + 3, offset + i + 5]
-            for i in range(0, N - 3, 3)
-        ])
-        angles.extend([
-            [offset + i, offset + i + 3, offset + i + 4]
-            for i in range(0, N - 3, 3)
-        ])
-        
-        # Base-Phosphate-Base
-        angles.extend([
-            [offset + i + 1, offset + i, offset + i + 2]
-            for i in range(0, N, 3)
-            if i + 2 < N
-        ])
-        # Base-Phosphate-Phosphate 
-        angles.extend([
-            [offset + i + 1, offset + i, offset + i + 3]
-            for i in range(0, N - 5, 3)
-        ])
-        angles.extend([
-            [offset + i + 2, offset + i, offset + i + 3]
-            for i in range(0, N - 5, 3)
-        ])
-
-        angle_typeid.extend(
-        [0] * (N // 3 - 2) + # PPP
-        [1] * (2 * N // 3 - 2) + # PPB
-        [2] * (N // 3 )+ # BPB
-        [3] * (2 * N // 3 -2)) # BPP
-
-        # Dihedrals
-        # Stacking
-        dihedrals.extend([
-            [offset + i + 1, offset + i, offset + i + 3, offset + i + 4]
-            for i in range(0, N - 4, 3)
-        ])
-        dihedrals.extend([
-            [offset + i + 2, offset + i, offset + i + 3, offset + i + 5]
-            for i in range(0, N - 5, 3)
-        ])
-        # Direction
-        dihedrals.extend([
-            [offset + i, offset + i +3, offset + i + 4, offset + i + 5]
-            for i in range(0, N - 5, 3)
-        ])
-        dihedrals.extend([
-            [offset + i + 3, offset + i, offset + i + 2, offset + i + 1]
-            for i in range(0, N - 5, 3)
-        ])
-
-        dihedral_typeid.extend(        
-        [0] * (2 * N // 3 -2) + 
-        [1] * (2 * N // 3-2))
-
-        offset += N  # update offset for next molecule
-
-    # Checks for debugging
-    assert len(bonds) == len(bond_typeid), (
-        f"Bond mismatch: {len(bonds)} groups but {len(bond_typeid)} type IDs"
-    )
-    assert len(angles) == len(angle_typeid), (
-        f"Angle mismatch: {len(angles)} groups but {len(angle_typeid)} type IDs"
-    )
-    assert len(dihedrals) == len(dihedral_typeid), (
-        f"Dihedral mismatch: {len(dihedrals)} groups but {len(dihedral_typeid)} type IDs"
-    )
-
-    assert len(typeids) == total_particles, (
-        f"Particle type mismatch: expected {total_particles}, got {len(typeids)}"
-    )
-    assert len(positions) == total_particles, (
-        f"Position mismatch: expected {total_particles}, got {len(positions)}"
-    )
-    assert len(velocities) == total_particles, (
-        f"Velocity mismatch: expected {total_particles}, got {len(velocities)}"
-    )
-
-    # Finalize snapshot
-    snapshot.particles.typeid = typeids
-    snapshot.particles.position = positions
-    snapshot.particles.velocity = velocities
-    snapshot.particles.validate()
-
-    snapshot.bonds.N = len(bonds)
-    snapshot.bonds.types = bond_types
-
-    # type 0 (base-phosphate), type 1 (phosphate-phosphate)
-    snapshot.bonds.typeid = bond_typeid
-
-    # Bonds
-    snapshot.bonds.group = bonds
-    snapshot.bonds.validate()
-
-    # Angles
-    snapshot.angles.N = len(angles)
-    snapshot.angles.types = angle_types
-    snapshot.angles.typeid = angle_typeid
-    snapshot.angles.group = angles
-    snapshot.angles.validate()
-
-    # Dihedrals
-    snapshot.dihedrals.N = len(dihedrals)
-    snapshot.dihedrals.types = dihedral_types
-    snapshot.dihedrals.typeid = dihedral_typeid
-    snapshot.dihedrals.group = dihedrals
-    snapshot.dihedrals.validate()
-
-    print(f"Snapshot created with {num_mols} RNA molecules in a box of side {box_size:.3f}")
-    print(f"Total particles: {total_particles}, bonds: {len(bonds)}, angles: {len(angles)}, dihedrals: {len(dihedrals)}")
-
-    return snapshot
-
-
-def snapshot_2_particles(par: argparse.Namespace) -> gsd.hoomd.Frame:
-    """Simplified 2-particles (B-A/G/C/T) model.
-
-    Args:
-        par: Parsed command-line parameters. Expected to contain the
-            attributes needed to define particle types and simulation setup.
-
-    Returns:
-        A HOOMD snapshot representing the simplified two-particle model.
-    """
-    sequences = [insert_backbone(seq) for seq in par.sequences]
-    num_mols = len(sequences)
-    lengths = [len(seq) for seq in sequences]
-    total_particles = sum(lengths)
-
-    snapshot = gsd.hoomd.Frame()
-
-    # Estimate total box size
-    volume = total_particles / par.density
-    box_size = volume ** (1/3)
-
-    snapshot.particles.N = total_particles
-    snapshot.configuration.box = [box_size, box_size, box_size, 0, 0, 0]
-    snapshot.particles.types = par.type_names
-    
-    type_to_id = {name: i for i, name in enumerate(par.type_names)}
-
-    typeids = []
-    positions = []
-    velocities = []
-    bonds = []
-    angles = []
-    dihedrals = []
-    
-
-    bond_types = ['Base-Phosphate', 'Phosphate-Phosphate']
-    angle_types = ['Phosphate-Phosphate-Phosphate', 'Phosphate-Phosphate-Base', 'Base-Phosphate-Phosphate']
-    dihedral_types =  ['Stacking']
-
-    bond_typeid = []
-    angle_typeid = []
-    dihedral_typeid = []
-
-
-    offset = 0
-    rng = np.random.default_rng(par.init_seed)
-    for sequence in sequences:
-        N = len(sequence)
-        typeids.extend(type_to_id[x] for x in sequence)
-
-        # Assign a center offset for this molecule to avoid overlaps
-        center_offset = rng.uniform(-box_size / 2, box_size / 2, size=3)
-        pos = random_walk_positions_3D(
-            N=N, step_size=par.bond_length, box_size=box_size,rng=rng, start_pos=center_offset
-        )
-        positions.extend(pos)
-        velocities.extend([[0.0, 0.0, 0.0]] * N)
-
-        # Bonds
-        # P-B (0,1), (2,3)..
-        bonds.extend(
-            [[offset + i, offset + i + 1] for i in range(0, N - 1, 2)]
-        )
-        # P-P (0,2), (2,4)...
-        bonds.extend([
-            [offset + i, offset + i + 2]
-            for i in range(0, N-2, 2)
-        ])
-
-        bond_typeid.extend([0] * len(range(0, N - 1, 2)))
-        bond_typeid.extend([1] * len(range(0, N - 2, 2)))
-        
-        # Angles
-        # Phosphate-Phosphate-Phosphate: (0,2,4), (2,4,6), ...
-        ppp_angles = [
-            [offset + i, offset + i + 2, offset + i + 4]
-            for i in range(0, N - 4, 2)
+            for i in range(n_particles - 1)
         ]
+        bonds.extend(molecule_bonds)
+        bond_typeids.extend([0] * len(molecule_bonds))
 
-        # Phosphate-Phosphate-Base: (0,2,3), (2,4,5), ...
-        # base attached to the second phosphate
-        ppb_angles = [
-            [offset + i, offset + i + 2, offset + i + 3]
-            for i in range(0, N - 3, 2)
+        molecule_angles = [
+            [offset + i, offset + i + 1, offset + i + 2]
+            for i in range(n_particles - 2)
         ]
+        angles.extend(molecule_angles)
+        angle_typeids.extend([0] * len(molecule_angles))
 
-        # Base-Phosphate-Phosphate: (1,2,4), (3,4,6), ...
-        # base attached to the first phosphate
-        bpp_angles = [
-            [offset + i + 1, offset + i + 2, offset + i + 4]
-            for i in range(0, N - 4, 2)
-        ]
-
-        angles.extend(ppp_angles)
-        angles.extend(ppb_angles)
-        angles.extend(bpp_angles)
-
-        angle_typeid.extend([0] * len(ppp_angles))  # PPP
-        angle_typeid.extend([1] * len(ppb_angles))  # PPB
-        angle_typeid.extend([2] * len(bpp_angles))  # BPP
-        
-        # Stacking dihedrals
-        stacking_dihedrals = [
-            [offset + i + 1, offset + i, offset + i + 2, offset + i + 3]
-            for i in range(0, N - 3, 2)
-        ]
-
-        dihedrals.extend(stacking_dihedrals)
-        dihedral_typeid.extend([0] * len(stacking_dihedrals))
-
-        offset += N
-    
-    assert len(typeids) == total_particles
-    assert len(positions) == total_particles
-    assert len(velocities) == total_particles
-    assert len(bonds) == len(bond_typeid)
-    assert len(angles) == len(angle_typeid)
-    assert len(dihedrals) == len(dihedral_typeid)
-    # Align angle
-    
-    # moments = []
-    # for t_id in typeids:
-    #     t_name = snapshot.particles.types[t_id]
-    #     if t_name == "B":
-    #         moments.append([0.0, 0.0, 0.0])
-    #     else:
-    #         moments.append([1.0, 1.0, 1.0])
-
-    snapshot.particles.typeid = typeids
-    snapshot.particles.position = positions
-    snapshot.particles.velocity = velocities
-    #snapshot.particles.moment_inertia = moments # Align angle
-    snapshot.particles.moment_inertia = [[1.0, 1.0, 1.0]] * total_particles # Align angle on all particles
-
-    snapshot.particles.validate()
-
-    snapshot.bonds.N = len(bonds)
-    snapshot.bonds.types = bond_types
-    snapshot.bonds.typeid = bond_typeid
-    snapshot.bonds.group = bonds
-    snapshot.bonds.validate()
-
-    snapshot.angles.N = len(angles)
-    snapshot.angles.types = angle_types
-    snapshot.angles.typeid = angle_typeid
-    snapshot.angles.group = angles
-    snapshot.angles.validate()
-
-    # Dihedrals
-    snapshot.dihedrals.N = len(dihedrals)
-    snapshot.dihedrals.types = dihedral_types
-    snapshot.dihedrals.typeid = dihedral_typeid
-    snapshot.dihedrals.group = dihedrals
-    snapshot.dihedrals.validate()
-
-    print(
-        f"Snapshot created with {num_mols} molecules in a box of side {box_size:.3f}")
-    print(
-        f"Total particles: {total_particles}, bonds: {len(bonds)}, angles: {len(angles)}, dihedrals: {len(dihedrals)}")
-
-    return snapshot
-
-
-def snapshot_sticker_spacer(par):
-    sequences = par.sequences
-    num_mols = len(sequences)
-    total_particles = sum(len(seq) for seq in sequences)
-
-    snapshot = gsd.hoomd.Frame()
-
-    volume = total_particles / par.density
-    box_size = volume ** (1 / 3)
-
-    snapshot.particles.N = total_particles
-    snapshot.configuration.box = [box_size, box_size, box_size, 0, 0, 0]
-    snapshot.particles.types = par.type_names
-
-    type_to_id = {name: i for i, name in enumerate(par.type_names)}
-
-    typeids = []
-    positions = []
-    velocities = []
-    bonds = []
-    angles = []
-
-    bond_types = ['Base-Base']
-    angle_types = ['Base-Base-Base']
-
-    bond_typeid = []
-    angle_typeid = []
-
-    offset = 0
-    rng = np.random.default_rng(par.init_seed)
-
-    for sequence in sequences:
-        N = len(sequence)
-        typeids.extend(type_to_id[x] for x in sequence)
-
-        center_offset = rng.uniform(-box_size / 2, box_size / 2, size=3)
-        pos = random_walk_positions_3D(
-            N=N, step_size=par.bond_length, box_size=box_size,rng=rng, start_pos=center_offset
-        )
-        positions.extend(pos)
-        velocities.extend([[0.0, 0.0, 0.0]] * N)
-
-        bonds.extend(
-            [[offset + i, offset + i + 1] for i in range(N - 1)]
-        )
-        bond_typeid.extend([0] * (N - 1))
-
-        angles.extend(
-            [[offset + i, offset + i + 1, offset + i + 2]
-                for i in range(N - 2)]
-        )
-        angle_typeid.extend([0] * (N - 2))
-
-        offset += N
+        offset += n_particles
 
     assert len(typeids) == total_particles
     assert len(positions) == total_particles
     assert len(velocities) == total_particles
-    assert len(bonds) == len(bond_typeid)
-    assert len(angles) == len(angle_typeid)
+    assert len(bonds) == len(bond_typeids)
+    assert len(angles) == len(angle_typeids)
 
     snapshot.particles.typeid = typeids
     snapshot.particles.position = positions
@@ -1185,20 +362,22 @@ def snapshot_sticker_spacer(par):
     snapshot.particles.validate()
 
     snapshot.bonds.N = len(bonds)
-    snapshot.bonds.types = bond_types
-    snapshot.bonds.typeid = bond_typeid
+    snapshot.bonds.types = list(par.bond_types)
+    snapshot.bonds.typeid = bond_typeids
     snapshot.bonds.group = bonds
     snapshot.bonds.validate()
 
     snapshot.angles.N = len(angles)
-    snapshot.angles.types = angle_types
-    snapshot.angles.typeid = angle_typeid
+    snapshot.angles.types = list(par.angle_types)
+    snapshot.angles.typeid = angle_typeids
     snapshot.angles.group = angles
     snapshot.angles.validate()
 
     print(
         f"Snapshot created with {num_mols} molecules in a box of side {box_size:.3f}")
     print(
-        f"Total particles: {total_particles}, bonds: {len(bonds)}, angles: {len(angles)}")
+        f"Total particles: {total_particles}, "
+        f"bonds: {len(bonds)}, angles: {len(angles)}"
+    )
 
     return snapshot
