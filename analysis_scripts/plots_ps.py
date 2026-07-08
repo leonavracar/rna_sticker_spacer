@@ -13,64 +13,166 @@ import math
 import os
 from dataclasses import dataclass
 
+TIME_BIN_COLORS = (
+    "#2166ac",  # mono
+    "#67a9cf",  # di
+    "#d1e5f0",  # tri
+    "#fff176",  # 4-9
+    "#f4a582",  # 10-19
+    "#d6604d",  # 20-49
+    "#b2182b",  # 50+
+)
+
+@dataclass
+class PlotStyle:
+    # Global
+    cmap: str = "YlOrBr"
+    show_grid: bool = True
+    grid_alpha: float = 0.25
+    legend_loc: str = "best"
+
+    # Text
+    font_size: float = 10
+    title_size: float = 14
+    panel_title_size: float = 12
+    label_size: float = 11
+    tick_size: float = 10
+    legend_size: float = 10
+    legend_title_size: float = 10
+
+    # Scatter
+    alpha: float = 0.4
+    point_size: float = 8
+    jitter: float = 0.04
+
+    # Stacked area
+    stack_alpha: float = 0.8
+    stack_colors: tuple[str, ...] = TIME_BIN_COLORS
+
+    # Lines + replicate bands
+    mean_lw: float = 2.0
+    rep_lw: float = 0.8
+    rep_alpha: float = 0.25
+    band_alpha: float = 0.2
+
+    def mpl_rc(self) -> dict[str, Any]:
+        return {
+            "font.size": self.font_size,
+            "axes.titlesize": self.panel_title_size,
+            "axes.labelsize": self.label_size,
+            "xtick.labelsize": self.tick_size,
+            "ytick.labelsize": self.tick_size,
+            "legend.fontsize": self.legend_size,
+            "legend.title_fontsize": self.legend_title_size,
+            "figure.titlesize": self.title_size,
+        }
+    # Boxplots
+    box_facecolor: str = "white"
+    box_edgecolor: str = "black"
+    box_alpha: float = 0.85
+    box_lw: float = 1.0
+    box_median_color: str = "black"
+    box_median_lw: float = 1.5
+    box_whisker_color: str = "black"
+    box_point_color: str = "#666666"
+    box_point_size: float = 28
+    box_point_alpha: float = 0.8
+    box_point_jitter: float = 0.06
+    box_show_points: bool = True
+    box_show_fliers: bool = False
+
+
+# ============================================================================
+# HELPER
+# ============================================================================
+
+def save_fig(fig, name, *, save=False, outdir=None, params=None, ext="png", dpi=200):
+    """Show + optionally save. Filename = name + sorted params."""
+    if save:
+        outdir = Path(outdir)
+        outdir.mkdir(parents=True, exist_ok=True)
+
+        parts = [name]
+        if params:
+            parts += [f"{k}={v}" for k, v in sorted(params.items())]
+
+        path = outdir / (("__".join(parts)) + f".{ext}")
+        fig.savefig(path, dpi=dpi, bbox_inches="tight")
+        print(f"saved: {path}")
+
+    plt.show()
 
 # ============================================================================
 # LABEL HANDLING
 # ============================================================================
 
+
 LABEL_MAP = {
     # ── Time axis ────────────────────────────────────────────────────────────
-    "step":                 "Simulation Step",
-    "frame":                "Frame",
-    "time":                 "Time",
-    "rna" : "RNA", # added column in processing of some dfs
+    "step": "Simulation Step",
+    "frame": "Frame",
+    "time": "Time",
+    "rna": "RNA",
 
-    # ── Simulation parameters ─────────────────────────────────────────────
+    # ── Simulation parameters ───────────────────────────────────────────────
     "angle_k_ppp": r"$k_{\mathrm{bbb}}$",
     "E_att": r"$E_{\mathrm{att}}$",
-    "density":              r"$\rho$",
-    "molecule_file":        "RNA",
+    "density": r"$\rho$",
+    "molecule_file": "RNA",
 
-    # ── Logged simulation quantities ──────────────────────────────────────
-    "ke_per_particle":      "KE/N",
-    "E_pot":                "E_pot",
-    "E_SQD":                "E_SQD",
-    "E_bond":               "E_bond",
-    "E_angle":              "E_angle",
+    # ── Logged simulation quantities ────────────────────────────────────────
+    "ke_per_particle": "KE/N",
+    "E_pot": "E_pot",
+    "E_SQD": "E_SQD",
+    "E_bond": "E_bond",
+    "E_angle": "E_angle",
 
-    # ── Single-molecule conformation ──────────────────────────────────────
-    "rg":                   "Rg",
-    "end_to_end_distance":  "R",
+    # ── Single-molecule conformation ────────────────────────────────────────
+    "rg": "Rg",
+    "end_to_end_distance": "R",
 
-    # ── Base-pair contacts ────────────────────────────────────────────────
-    "particle_contacts":                    "N_bp",
-    "distinct_molecule_pairs":              "N_mol-pair",
-    "qualifying_molecule_pairs":            "N*_mol-pair",
-    "inter_frac":                           "f_inter",
-    "intra_frac":                           "f_intra",
+    # ── Base-pair contacts ──────────────────────────────────────────────────
+    "particle_contacts": "N_bp",
+    "distinct_molecule_pairs": "N_mol-pair",
+    "qualifying_molecule_pairs": "N*_mol-pair",
+    "inter_frac": "f_inter",
+    "intra_frac": "f_intra",
 
-    # ── Recurrence ────────────────────────────────────────────────────────
-    # "contact_regions_particle":             "N_reg (exact)",
-    # "contact_region_recurrence_particle":   "R_rec (exact)",
-    # "contact_regions_fixed":                "N_reg (fixed bin)",
-    # "contact_region_recurrence_fixed":      "R_rec (fixed bin)",
-    # "contact_regions_repeat":               "N_reg (repeat unit)",
-    # "contact_region_recurrence_repeat":     "R_rec (repeat unit)",
-    # "contact_regions_repeat_window":        "N_reg (repeat window)",
-    # "contact_region_recurrence_repeat_window": "R_rec (repeat window)",
-    "molecule_contact_recurrence_window":     "recurrence (mol)",
-    "particle_contact_recurrence_window":     "recurrence (particle)",
+    # ── Recurrence ──────────────────────────────────────────────────────────
+    "molecule_contact_recurrence_window": "recurrence (mol)",
+    "particle_contact_recurrence_window": "recurrence (particle)",
 
-    # ── Cluster / phase fractions ─────────────────────────────────────────
-    "mono_frac":                            "f_mono",
-    "oligo_frac":                           "f_oligo",
-    "drop_frac":                            "f_droplet",
-    "largest_cluster":                      "largest cluster",
-    "n_clusters":                           "N_clusters",
+    # ── Cluster / phase fractions ───────────────────────────────────────────
+    "mono_frac": "f_mono",
+    "oligo_frac": "f_oligo",
+    "drop_frac": "f_droplet",
+    "largest_cluster": "largest cluster size (mol)",
+    "n_clusters": "Number of clusters",
     "cluster_size": "Cluster size",
     "frac_mols": "Fraction of molecules",
-    "n_clusters": "Number of clusters",
     "n_mols_in_clusters": "Molecules in clusters",
+    "sequence_class": "sequence class",
+    "edge_strength_q90_qualifying": r"$q_{90}$ edge strength",
+    "edge_density_qualifying": "Edge density",
+    "mean_degree_qualifying": "Mean degree",
+
+    # ── Cluster material percentage bins ─────────────────────────────────────
+    "pct_mono": "mono",
+    "pct_1-2": "1–2%",
+    "pct_2-3": "2–3%",
+    "pct_3-9": "3–9%",
+    "pct_10-19": "10–19%",
+    "pct_20-49": "20–49%",
+    "pct_50+": "≥50%",
+
+    # ── Cluster molecule-count bins ──────────────────────────────────────────
+    "mol_mono": "mono",
+    "mol_di": "di",
+    "mol_tri": "tri",
+    "mol_4-9": "4–9",
+    "mol_10-19": "10–19",
+    "mol_20-49": "20–49",
+    "mol_50+": "50+",
 }
 
 # ============================================================================
@@ -101,10 +203,11 @@ def setup_validation_paths(sweep_dir_name: str) -> dict[str, Path]:
         "framewise_csv": sweep_dir / "analysis_framewise.csv",
         "parameters_txt": sweep_dir / "parameters.txt",
         "analysis_per_replicate_csv": sweep_dir / "analysis_per_replicate.csv",
-        "error_rate": sweep_dir / "analysis_error_rate.csv",
         "clusters": sweep_dir / "analysis_clusters.csv",
         "graph": sweep_dir / "graph_framewise_summary.csv",
-        "clusters_mix": sweep_dir / "analysis_cluster_resolved.csv"
+        "clusters_mix": sweep_dir / "analysis_cluster_resolved.csv",
+        "binned_clusters": sweep_dir / "analysis_cluster_binned.csv"
+
     }
 
 def setup_npz_mp_paths(sweep_dir:str, run_dir_num:str, rep_num:int = 0) -> dict[str, Path]:
@@ -500,6 +603,182 @@ def plot_stacked_replicate_bars_fraction(
 
     return ax
 
+
+def plot_ranked_cluster_bars(
+    df,
+    ax,
+    *,
+    x_col,
+    y_cols,
+    mol_cols,
+    colors,
+    x_order,
+    group_col=None,
+    annotate_mols=False,
+):
+    d = df.copy()
+    d[x_col] = pd.Categorical(d[x_col], categories=x_order, ordered=True)
+    d = d.sort_values([x_col, group_col] if group_col else [x_col])
+
+    x_base = np.arange(len(x_order)) * 1.35
+
+    if group_col is None:
+        bar_groups = [(x, None, g) for x, g in d.groupby(x_col, observed=True)]
+        width = 0.75
+    else:
+        max_n = d.groupby(x_col, observed=True)[group_col].nunique().max()
+        width = min(0.16, 1.05 / max_n)
+        bar_groups = []
+
+        for x, g in d.groupby(x_col, observed=True):
+            reps = list(g.groupby(group_col, observed=True))
+            offsets = (np.arange(len(reps)) - (len(reps) - 1) / 2) * width
+
+            for offset, (_, r) in zip(offsets, reps):
+                bar_groups.append((x, offset, r))
+
+    for x, offset, g in bar_groups:
+        i = x_order.index(x)
+        xpos = x_base[i] if offset is None else x_base[i] + offset
+        row = g.iloc[0]
+        bottom = 0.0
+
+        for y_col, mol_col, color in zip(y_cols, mol_cols, colors):
+            height = row[y_col]
+
+            ax.bar(
+                xpos,
+                height,
+                bottom=bottom,
+                width=width,
+                color=color,
+                linewidth=0,
+            )
+
+            if annotate_mols and height >= 0.055:
+                ax.text(
+                    xpos,
+                    bottom + height / 2,
+                    f"{row[mol_col]:.0f}",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                )
+
+            bottom += height
+
+    ax.set_xticks(x_base)
+    ax.set_xticklabels(x_order, rotation=0)
+    ax.set_ylim(0, 1)
+    ax.set_xlabel(get_label(x_col, LABEL_MAP))
+    ax.set_ylabel("Fraction")
+    ax.grid(True, axis="y", alpha=0.25)
+
+def plot_stacked_fraction_summary(
+    df: pd.DataFrame,
+    ax: plt.Axes,
+    y_cols: list[str],
+    x_col: str,
+    group_col: str | None,
+    style: PlotStyle,
+    label_map: dict[str, str] | None = LABEL_MAP,
+    aggfunc: str = "mean",
+    ylabel: str = "Mean fraction",
+    legend_title: str = "Cluster size bin",
+    show_legend: bool = True,
+) -> plt.Axes:
+    """
+    Plot stacked fraction bars summarized over groups.
+
+    If group_col is provided:
+        1. average y_cols within each group/x_col
+        2. average those group-level values across groups for each x_col
+
+    This is useful when df contains multiple frames per replicate and you want
+    each replicate to contribute one value per x value before averaging.
+
+    If group_col is None:
+        directly average y_cols by x_col.
+    """
+    required_cols = [x_col, *y_cols]
+    if group_col is not None:
+        required_cols.append(group_col)
+
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing columns: {missing_cols}")
+
+    d = df.dropna(subset=[x_col]).copy()
+
+    if group_col is not None:
+        d_grouped = (
+            d.groupby([group_col, x_col], as_index=False)[y_cols]
+            .agg(aggfunc)
+        )
+
+        plot_df = (
+            d_grouped
+            .groupby(x_col, as_index=False)[y_cols]
+            .agg(aggfunc)
+            .sort_values(x_col)
+        )
+    else:
+        plot_df = (
+            d.groupby(x_col, as_index=False)[y_cols]
+            .agg(aggfunc)
+            .sort_values(x_col)
+        )
+
+    if plot_df.empty:
+        raise ValueError("No data left to plot.")
+
+    frac_sum = plot_df[y_cols].sum(axis=1)
+    if not np.allclose(frac_sum, 1.0, atol=1e-5):
+        print(
+            "Warning: stacked fractions do not sum exactly to 1. "
+            f"Range: {frac_sum.min():.4f}–{frac_sum.max():.4f}"
+        )
+
+    x_values = plot_df[x_col].to_list()
+    x = np.arange(len(x_values))
+    bottom = np.zeros(len(plot_df))
+
+    for i, col in enumerate(y_cols):
+        ax.bar(
+            x,
+            plot_df[col].to_numpy(),
+            bottom=bottom,
+            color=style.stack_colors[i],
+            alpha=style.stack_alpha,
+            label=get_label(col, label_map),
+            width=0.75,
+            linewidth=0,
+        )
+        bottom += plot_df[col].to_numpy()
+
+    ax.set_xticks(x)
+    ax.set_xticklabels([
+        f"{value:g}" if isinstance(value, (int, float, np.integer, np.floating)) else str(value)
+        for value in x_values
+    ])
+
+    ax.set_xlabel(get_label(x_col, label_map))
+    ax.set_ylabel(ylabel)
+    ax.set_ylim(0, 1)
+
+    if style.show_grid:
+        ax.grid(True, axis="y", alpha=style.grid_alpha)
+
+    if show_legend:
+        ax.legend(
+            title=legend_title,
+            loc="center left",
+            bbox_to_anchor=(1.02, 0.5),
+            frameon=True,
+        )
+
+    return ax
+
 def get_label(col: str, label_map: dict[str, str] | None = LABEL_MAP) -> str:
     """
     Return a display label for a column name.
@@ -513,93 +792,11 @@ def get_label(col: str, label_map: dict[str, str] | None = LABEL_MAP) -> str:
 # PLOTS
 # ============================================================================
 
-STATE_BIN_LABELS = [
-    "mono",
-    "di",
-    "tri",
-    "4-9",
-    "10-49",
-    "50+",
-]
-
-STATE_BIN_EDGES = [0, 1, 2, 3, 9, 49, np.inf]
-
-STATE_BIN_COLORS = (
-    "#2166ac",  # mono
-    "#67a9cf",  # di
-    "#d1e5f0",  # tri
-    "#fff176",  # 4-9
-    "#f4a582",  # 10-49
-    "#b2182b",  # 50+
-)
 
 
-TIME_BIN_LABELS = [
-    "mono",
-    "di",
-    "tri",
-    "4-9",
-    "10-19",
-    "20-49",
-    "50+",
-]
-
-TIME_BIN_EDGES = [0, 1, 2, 3, 9, 19, 49, np.inf]
-
-TIME_BIN_COLORS = (
-    "#2166ac",  # mono
-    "#67a9cf",  # di
-    "#d1e5f0",  # tri
-    "#fff176",  # 4-9
-    "#f4a582",  # 10-19
-    "#d6604d",  # 20-49
-    "#b2182b",  # 50+
-)
 
 
-@dataclass
-class PlotStyle:
-    # Global
-    cmap: str = "YlOrBr"
-    show_grid: bool = True
-    grid_alpha: float = 0.25
-    legend_loc: str = "best"
 
-    # Text
-    font_size: float = 10
-    title_size: float = 14
-    panel_title_size: float = 12
-    label_size: float = 11
-    tick_size: float = 10
-    legend_size: float = 10
-    legend_title_size: float = 10
-
-    # Scatter
-    alpha: float = 0.4
-    point_size: float = 8
-    jitter: float = 0.04
-
-    # Stacked area
-    stack_alpha: float = 0.25
-    stack_colors: tuple[str, ...] = TIME_BIN_COLORS
-
-    # Lines + replicate bands
-    mean_lw: float = 2.0
-    rep_lw: float = 0.8
-    rep_alpha: float = 0.25
-    band_alpha: float = 0.2
-
-    def mpl_rc(self) -> dict[str, Any]:
-        return {
-            "font.size": self.font_size,
-            "axes.titlesize": self.panel_title_size,
-            "axes.labelsize": self.label_size,
-            "xtick.labelsize": self.tick_size,
-            "ytick.labelsize": self.tick_size,
-            "legend.fontsize": self.legend_size,
-            "legend.title_fontsize": self.legend_title_size,
-            "figure.titlesize": self.title_size,
-        }
 
 def make_panel_plot_fn(
     plot_fn: Callable[..., Any],
@@ -700,7 +897,6 @@ def capture_handle(plot_fn: Callable[[pd.DataFrame, plt.Axes], None], handles:li
         result = plot_fn(df, ax)
         handles.append(result[handle_idx])
     return wrapped
-
 def plot_box_summary(
     df: pd.DataFrame,
     ax: plt.Axes,
@@ -708,34 +904,97 @@ def plot_box_summary(
     y_col: str,
     style: PlotStyle,
     label_map: dict[str, str] | None = LABEL_MAP,
+    color_map: dict[Any, str] | None = None,
+    show_points: bool | None = None,
 ) -> plt.Axes:
     """
-    Boxplot pooling all rows passed to this function.
+    Boxplot grouped by x_col, with optional individual points.
 
-    If df contains multiple replicates, replicates are pooled.
-    If df was pre-filtered to the final fraction of each run, the boxes show
-    the distribution of final-window framewise values.
-
-    The x-axis is treated categorically, so numeric values like 1, 2, and 32
+    This treats x_col categorically, so numeric values like 1, 2, 4, 8, 16
     are evenly spaced.
     """
-    x_values = sorted(df[x_col].dropna().unique())
+    required_cols = [x_col, y_col]
+    missing_cols = [c for c in required_cols if c not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing columns: {missing_cols}")
+
+    df_plot = df.dropna(subset=[x_col, y_col]).copy()
+
+    x_values = sorted(df_plot[x_col].dropna().unique())
+    positions = np.arange(len(x_values))
 
     groups = [
-        df.loc[df[x_col] == value, y_col].dropna()
+        df_plot.loc[df_plot[x_col] == value, y_col].dropna().to_numpy()
         for value in x_values
     ]
 
-    ax.boxplot(
+    if show_points is None:
+        show_points = getattr(style, "box_show_points", True)
+
+    bp = ax.boxplot(
         groups,
-        positions=range(len(x_values)),
-        widths=0.6,
+        positions=positions,
+        widths=0.55,
         patch_artist=True,
-        showfliers=True,
+        showfliers=getattr(style, "box_show_fliers", False),
+        medianprops=dict(
+            color=getattr(style, "box_median_color", "black"),
+            linewidth=getattr(style, "box_median_lw", 1.5),
+        ),
+        whiskerprops=dict(
+            color=getattr(style, "box_whisker_color", "black"),
+            linewidth=getattr(style, "box_lw", 1.0),
+        ),
+        capprops=dict(
+            color=getattr(style, "box_whisker_color", "black"),
+            linewidth=getattr(style, "box_lw", 1.0),
+        ),
+        boxprops=dict(
+            facecolor=getattr(style, "box_facecolor", "white"),
+            edgecolor=getattr(style, "box_edgecolor", "black"),
+            linewidth=getattr(style, "box_lw", 1.0),
+            alpha=getattr(style, "box_alpha", 0.85),
+        ),
     )
 
-    ax.set_xticks(range(len(x_values)))
-    ax.set_xticklabels(x_values)
+    # Optional individual points
+    if show_points:
+        rng = np.random.default_rng(42)
+
+        default_point_color = getattr(style, "box_point_color", "#666666")
+        point_size = getattr(style, "box_point_size", 28)
+        point_alpha = getattr(style, "box_point_alpha", 0.8)
+        jitter = getattr(style, "box_point_jitter", 0.06)
+
+        for i, value in enumerate(x_values):
+            vals = df_plot.loc[df_plot[x_col] == value, y_col].dropna().to_numpy()
+
+            if len(vals) == 0:
+                continue
+
+            x_jit = i + rng.uniform(-jitter, jitter, size=len(vals))
+
+            point_color = (
+                color_map[value]
+                if color_map is not None and value in color_map
+                else default_point_color
+            )
+
+            ax.scatter(
+                x_jit,
+                vals,
+                s=point_size,
+                color=point_color,
+                alpha=point_alpha,
+                edgecolors="none",
+                zorder=3,
+            )
+
+    ax.set_xticks(positions)
+    ax.set_xticklabels([
+        f"{x:g}" if isinstance(x, (int, float, np.integer, np.floating)) else str(x)
+        for x in x_values
+    ])
 
     ax.set_xlabel(get_label(x_col, label_map))
     ax.set_ylabel(get_label(y_col, label_map))
@@ -844,7 +1103,6 @@ def plot_violin_by_group(
         ax.grid(True, axis="y", alpha=style.grid_alpha)
 
     return ax
-
 def plot_stacked_replicates_fraction(
     df: pd.DataFrame,
     ax: plt.Axes,
@@ -852,36 +1110,63 @@ def plot_stacked_replicates_fraction(
     x_col: str,
     group_col: str,
     style: PlotStyle,
-    label_map: dict[str, str] | None =LABEL_MAP,
+    label_map: dict[str, str] | None = LABEL_MAP,
+    aggregate: bool = False,
+    aggfunc: str = "mean",
 ) -> plt.Axes:
     """
-    Plot stacked fraction trajectories for multiple replicates.
+    Plot stacked fractions for multiple groups/replicates.
 
-    Each replicate is drawn as a semi-transparent stackplot. Where replicates
-    agree, the stacked areas overlap strongly. Where replicates diverge, the
-    edges become more spread out.
+    Args:
+        df: Input dataframe.
+        ax: Matplotlib axis.
+        y_cols: Columns to stack. These become the colored layers.
+        x_col: X-axis column.
+        group_col: Column identifying replicate/group traces.
+        style: PlotStyle.
+        label_map: Optional display label map.
+        aggregate: If True, collapse repeated rows per (group_col, x_col).
+                   Useful after final_fraction filtering when multiple frames
+                   remain per replicate and x value.
+        aggfunc: Aggregation function for y_cols, usually "mean" or "sum".
 
-    This function does not filter or create panels. It assumes df has already
-    been prepared by the caller or by plot_panels_by_group().
+    Returns:
+        The same ax.
     """
-    required_cols = [x_col, group_col] + y_cols
+    required_cols = [x_col, group_col, *y_cols]
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing columns: {missing_cols}")
 
-    for col in required_cols:
-        if col not in df.columns:
-            raise ValueError(f"Missing column: {col}")
+    df_plot = df.copy()
 
-    x_values = sorted(df[x_col].dropna().unique())
+    if aggregate:
+        df_plot = (
+            df_plot
+            .groupby([group_col, x_col], as_index=False)[y_cols]
+            .agg(aggfunc)
+        )
+
+    # Safety check: after optional aggregation, one row per group/x is expected
+    dupes = df_plot.duplicated([group_col, x_col]).sum()
+    if dupes:
+        raise ValueError(
+            f"Found {dupes} duplicate rows per ({group_col}, {x_col}). "
+            "Use aggregate=True or pre-aggregate the dataframe."
+        )
+
+    x_values = sorted(df_plot[x_col].dropna().unique())
     x_map = {value: i for i, value in enumerate(x_values)}
 
-    replicates = sorted(df[group_col].dropna().unique())
+    groups = sorted(df_plot[group_col].dropna().unique())
 
-    for i, rep in enumerate(replicates):
-        df_rep = (
-            df.loc[df[group_col] == rep]
+    for i, group_value in enumerate(groups):
+        d_group = (
+            df_plot.loc[df_plot[group_col] == group_value]
             .sort_values(x_col)
         )
 
-        x = df_rep[x_col].map(x_map).to_numpy()
+        x = d_group[x_col].map(x_map).to_numpy()
 
         labels = (
             [get_label(col, label_map) for col in y_cols]
@@ -891,14 +1176,17 @@ def plot_stacked_replicates_fraction(
 
         ax.stackplot(
             x,
-            *[df_rep[col] for col in y_cols],
+            *[d_group[col].to_numpy() for col in y_cols],
             labels=labels,
             alpha=style.stack_alpha,
             colors=style.stack_colors[:len(y_cols)],
         )
 
     ax.set_xticks(range(len(x_values)))
-    ax.set_xticklabels([f"{x:g}" for x in x_values])
+    ax.set_xticklabels([
+        f"{x:g}" if isinstance(x, (int, float, np.integer, np.floating)) else str(x)
+        for x in x_values
+    ])
 
     ax.set_xlabel(get_label(x_col, label_map))
     ax.set_ylabel("Fraction")
@@ -907,11 +1195,6 @@ def plot_stacked_replicates_fraction(
     if style.show_grid:
         ax.grid(True, alpha=style.grid_alpha)
 
-    # ax.legend(
-    #     title=f"n = {len(replicates)}",
-    #     loc="upper right",
-    # )
-    print(f"Replicates n = {len(replicates)}")
     return ax
 
 
@@ -953,7 +1236,6 @@ def plot_stacked_replicates_over_time(
     return ax
 
 # LINE PLOT
-
 def plot_replicate_band(
     df: pd.DataFrame,
     ax: plt.Axes,
@@ -963,30 +1245,32 @@ def plot_replicate_band(
     run_col: str = "run_id",
     color: str = "C0",
     label: str | None = None,
-    band_mode: str = "replicates",   # "replicates" | "std" | "iqr" | "none"
+    band_mode: str = "replicates",
     smoothing_window: int | None = None,
+    categorical_x: bool = False,
+    x_values: Sequence[Any] | None = None,
+    x_scale: float | None = None,
+    x_label: str | None = None,
+    show_points: bool = False,
+    point_color: str = "#7a7a7a",
+    point_alpha: float | None = None,
+    point_size: float | None = None,
+    point_jitter: float | None = None,
+    marker: str | None = None,
+    markersize: float = 5,
 ) -> plt.Axes:
     """
-    Draw one group's mean trajectory with optional replicate band on ax.
+    Draw one group's mean trajectory with optional replicate band.
 
-    If smoothing_window is given, applies a centered rolling mean per replicate
-    before aggregating. Useful for noisy trajectories like cluster counts.
+    If categorical_x=True, x_col values are mapped to evenly spaced positions.
+    This is useful for parameter sweeps such as E_att = [2, 4, 6, 8, 12],
+    where the visual spacing should be categorical rather than numeric.
 
-    Args:
-        df: Long-format DataFrame containing one group.
-        ax: Matplotlib axis to draw on.
-        x_col: Column for the x-axis.
-        y_col: Column for the y-axis.
-        style: PlotStyle.
-        run_col: Column identifying replicates.
-        color: Color for the mean line and band.
-        label: Legend label for the mean line.
-        band_mode: How to visualize replicate spread.
-        smoothing_window: If not None, apply rolling mean of this window per
-            replicate before plotting.
-
-    Returns:
-        The same ax.
+    band_mode:
+        "replicates" : draw one faint line per replicate
+        "std"        : draw mean ± std
+        "iqr"        : draw q25–q75 band
+        "none"       : draw mean only
     """
     if band_mode not in {"replicates", "std", "iqr", "none"}:
         raise ValueError(f"Unknown band_mode: {band_mode}")
@@ -995,53 +1279,160 @@ def plot_replicate_band(
         if col not in df.columns:
             raise ValueError(f"Missing column: {col}")
 
-    # Optional smoothing — applied per replicate so runs don't bleed into each other
+    d = df.dropna(subset=[x_col, y_col]).copy()
+
+    if d.empty:
+        raise ValueError("No data left to plot after dropping NaNs.")
+
+    # Optional smoothing — applied per replicate so runs do not bleed into each other.
     if smoothing_window is not None and smoothing_window > 1:
-        df = df.sort_values([run_col, x_col]).copy()
-        df[y_col] = (
-            df.groupby(run_col)[y_col]
-              .transform(lambda s: s.rolling(smoothing_window, min_periods=1, center=True).mean())
+        d = d.sort_values([run_col, x_col]).copy()
+        d[y_col] = (
+            d.groupby(run_col)[y_col]
+            .transform(
+                lambda s: s.rolling(
+                    smoothing_window,
+                    min_periods=1,
+                    center=True,
+                ).mean()
+            )
         )
 
-    # Replicate cloud
-    if band_mode == "replicates":
-        for _, rep_df in df.groupby(run_col):
-            rep_df = rep_df.sort_values(x_col)
-            ax.plot(
-                rep_df[x_col], rep_df[y_col],
-                color=color, lw=style.rep_lw, alpha=style.rep_alpha,
+    # Optional categorical/evenly spaced x-axis.
+    if categorical_x:
+        if x_values is None:
+            x_values = sorted(d[x_col].dropna().unique())
+
+        x_values = list(x_values)
+        x_map = {value: i for i, value in enumerate(x_values)}
+
+        observed_x = set(d[x_col].dropna().unique())
+        missing_x = sorted(observed_x - set(x_values))
+
+        if missing_x:
+            raise ValueError(
+                f"x_values does not include all observed {x_col} values. "
+                f"Missing from x_values: {missing_x}"
             )
 
-    # Aggregate across replicates at each x
-    grouped = df.groupby(x_col)[y_col]
+        d["_x_plot"] = d[x_col].map(x_map).astype(float)
+        x_plot_col = "_x_plot"
+    else:
+        x_values = None
+        x_map = None
+        x_plot_col = x_col
+    if x_scale is not None and not categorical_x:
+        d["_x_plot_scaled"] = d[x_plot_col].astype(float) / x_scale
+        x_plot_col = "_x_plot_scaled"
+
+    # Optional replicate points.
+    if show_points:
+        rng = np.random.default_rng(42)
+
+        if point_alpha is None:
+            point_alpha = getattr(style, "box_point_alpha", 0.8)
+
+        if point_size is None:
+            point_size = getattr(style, "box_point_size", 28)
+
+        if point_jitter is None:
+            point_jitter = getattr(style, "box_point_jitter", 0.06)
+
+        if categorical_x:
+            x_points = d[x_plot_col].to_numpy(dtype=float)
+            x_points = x_points + rng.uniform(
+                -point_jitter,
+                point_jitter,
+                size=len(d),
+            )
+        else:
+            x_points = d[x_plot_col].to_numpy(dtype=float)
+
+        ax.scatter(
+            x_points,
+            d[y_col].to_numpy(),
+            s=point_size,
+            color=point_color,
+            alpha=point_alpha,
+            edgecolors="none",
+            zorder=2,
+        )
+
+    # Replicate cloud.
+    if band_mode == "replicates":
+        for _, rep_df in d.groupby(run_col):
+            rep_df = rep_df.sort_values(x_col)
+            ax.plot(
+                rep_df[x_plot_col],
+                rep_df[y_col],
+                color=color,
+                lw=style.rep_lw,
+                alpha=style.rep_alpha,
+            )
+
+    # Aggregate across replicates at each x.
+    grouped = d.groupby(x_col)[y_col]
+
     agg = pd.DataFrame({
         "mean": grouped.mean(),
-        "std":  grouped.std(),
-        "q25":  grouped.quantile(0.25),
-        "q75":  grouped.quantile(0.75),
+        "std": grouped.std(),
+        "q25": grouped.quantile(0.25),
+        "q75": grouped.quantile(0.75),
     }).sort_index()
 
-    # Shaded band variants
+    if categorical_x:
+        x_agg = np.array([x_map[value] for value in agg.index], dtype=float)
+    else:
+        x_agg = agg.index.to_numpy(dtype=float)
+        if x_scale is not None:
+            x_agg = x_agg / x_scale
+
+    # Shaded band variants.
     if band_mode == "std":
         ax.fill_between(
-            agg.index,
+            x_agg,
             agg["mean"] - agg["std"],
             agg["mean"] + agg["std"],
-            color=color, alpha=style.band_alpha, linewidth=0,
+            color=color,
+            alpha=style.band_alpha,
+            linewidth=0,
+            zorder=1,
         )
+
     elif band_mode == "iqr":
         ax.fill_between(
-            agg.index, agg["q25"], agg["q75"],
-            color=color, alpha=style.band_alpha, linewidth=0,
+            x_agg,
+            agg["q25"],
+            agg["q75"],
+            color=color,
+            alpha=style.band_alpha,
+            linewidth=0,
+            zorder=1,
         )
 
-    # Bold mean on top
+    # Bold mean on top.
     ax.plot(
-        agg.index, agg["mean"],
-        color=color, lw=style.mean_lw, label=label,
+        x_agg,
+        agg["mean"],
+        color=color,
+        lw=style.mean_lw,
+        label=label,
+        marker=marker,
+        markersize=markersize,
+        zorder=3,
     )
 
+    # Correct categorical ticks.
+    if categorical_x:
+        ax.set_xticks(np.arange(len(x_values)))
+        ax.set_xticklabels([
+            f"{value:g}" if isinstance(value, (int, float, np.integer, np.floating)) else str(value)
+            for value in x_values
+        ])
+    if x_label is not None:
+        ax.set_xlabel(x_label)
     return ax
+
 
 def plot_lines_by_group(
     df: pd.DataFrame,
@@ -1057,6 +1448,8 @@ def plot_lines_by_group(
     smoothing_window: int | None = None,
     show_n: bool = True,
     legend_loc: str | None = None,
+    x_scale: float | None = None,
+    x_label: str | None = None,
 ) -> plt.Axes:
     """
     Draw one mean+band per group_col value on the same axis.
@@ -1110,16 +1503,21 @@ def plot_lines_by_group(
             label = base_label
 
         plot_replicate_band(
-            df=sub, ax=ax,
-            x_col=x_col, y_col=y_col,
-            style=style,
-            run_col=run_col,
-            color=color, label=label,
-            band_mode=band_mode,
-            smoothing_window=smoothing_window,  
-        )
+                    df=sub,
+                    ax=ax,
+                    x_col=x_col,
+                    y_col=y_col,
+                    style=style,
+                    run_col=run_col,
+                    color=color,
+                    label=label,
+                    band_mode=band_mode,
+                    smoothing_window=smoothing_window,
+                    x_scale=x_scale,
+                    x_label=x_label,
+                )
 
-    ax.set_xlabel(get_label(x_col, label_map))
+    ax.set_xlabel(x_label if x_label is not None else get_label(x_col, label_map))
     ax.set_ylabel(get_label(y_col, label_map))
 
     if style.show_grid:
@@ -1229,165 +1627,3 @@ def plot_panels_by_group(
     fig.tight_layout()
     return fig, axes
 
-
-# # Equilibration plots: first individual plotting functions
-
-# # Plot one timeseries
-# def plot_one_timeseries(df:pd.DataFrame, ax, y_col:str,  x_col:str = "step", label=None) -> Axes:
-#     plot_df = df.copy().sort_values(x_col) # sorted copy by x axis
-#     ax.plot(plot_df[x_col], plot_df[y_col], label= label)
-#     ax.set_xlabel(x_col)
-#     ax.set_ylabel(y_col)
-#     return ax
-
-# # somehow we also need optional saving for all plots
-# # Plot lines by group
-
-# def plot_lines_by_group(
-#     df: pd.DataFrame,
-#     ax,
-#     y_col: str,
-#     group_col: str,
-#     x_col: str = "step",
-# ) -> Axes:
-#     for group_value, group_df in df.groupby(group_col):
-#         plot_one_timeseries(
-#             df=group_df,
-#             ax=ax,
-#             y_col=y_col,
-#             x_col=x_col,
-#             label=f"{group_col}={group_value}",
-#         )
-
-#     ax.legend()
-#     return ax
-
-# def make_label(row: pd.Series, cols: Sequence[str]) -> str:
-#     """
-#     Make a readable label from one or more columns.
-#     """
-#     return ", ".join(f"{col}={row[col]}" for col in cols)
-
-# def plot_panels_by_group(
-#     df: pd.DataFrame,
-#     y_col: str,
-#     panel_cols: str | Sequence[str],
-#     line_col: str,
-#     x_col: str = "step",
-#     n_cols: int = 2,
-#     figsize_per_panel: tuple[float, float] = (6, 4),
-# ) -> tuple[Figure, np.ndarray]:
-#     """
-#     Plot one panel per parameter combination, with one line per line_col value.
-
-#     Args:
-#         df: Input DataFrame.
-#         y_col: Column to plot on the y-axis.
-#         panel_cols: Column(s) used to create separate subplots.
-#         line_col: Column used to create separate lines in each subplot.
-#         x_col: Column to plot on the x-axis.
-#         n_cols: Number of subplot columns.
-#         figsize_per_panel: Size of each subplot.
-
-#     Returns:
-#         Figure and axes.
-#     """
-#     if isinstance(panel_cols, str):
-#         panel_cols = [panel_cols]
-#     else:
-#         panel_cols = list(panel_cols)
-
-#     required_cols = [x_col, y_col, line_col, *panel_cols]
-#     missing_cols = [col for col in required_cols if col not in df.columns]
-
-#     if missing_cols:
-#         raise ValueError(f"Missing columns: {missing_cols}")
-
-#     panel_combis = (
-#         df[panel_cols]
-#         .drop_duplicates()
-#         .sort_values(panel_cols)
-#         .reset_index(drop=True)
-#     )
-
-#     n_panels = len(panel_combis)
-#     n_rows = math.ceil(n_panels / n_cols)
-
-#     fig, axes = plt.subplots(
-#         n_rows,
-#         n_cols,
-#         figsize=(
-#             figsize_per_panel[0] * n_cols,
-#             figsize_per_panel[1] * n_rows,
-#         ),
-#         sharex=True,
-#         sharey=True,
-#     )
-
-#     axes = np.array(axes).reshape(-1)
-
-#     for ax, (_, panel_values) in zip(axes, panel_combis.iterrows()):
-#         panel_df = df.copy()
-
-#         for col in panel_cols:
-#             panel_df = panel_df[panel_df[col] == panel_values[col]]
-
-#         plot_lines_by_group(
-#             df=panel_df,
-#             ax=ax,
-#             y_col=y_col,
-#             group_col=line_col,
-#             x_col=x_col,
-#         )
-
-#         ax.set_title(make_label(panel_values, panel_cols))
-
-#     for ax in axes[n_panels:]:
-#         ax.set_visible(False)
-
-#     fig.suptitle(f"{y_col} over {x_col}")
-#     plt.tight_layout()
-
-#     return fig, axes
-
-# ============================================================================
-# CUSTOM PLOT CONFIG
-# ============================================================================
-# Context manager (option 1)
-# with plt.rc_context(PAPER_STYLE):
-#     plot_panels_by_group(...)
-
-# # style setup
-# PAPER_STYLE = ...
-# LABELS = ...
-# COLORS = ...
-
-# # helper functions
-# get_label(...)
-# make_label(...)
-
-# # plotting functions
-# plot_one_timeseries(...)
-# plot_lines_by_group(...)
-# plot_panels_by_group(...)
-
-# Label control
-# ax.set_xlabel(get_label(x_col, label_map))
-# label=make_group_label(group_col, group_value, label_map, value_map)
-
-# label_map = {
-#     "temperature": "Temperature",
-# }
-
-# value_map = {
-#     "rep1": "Replicate 1",
-#     "rep2": "Replicate 2",
-# }
-
-# # COLORS
-# color_map = {
-#     "rep1": "...",
-#     "rep2": "...",
-#     "rep3": "...",
-# }
-# color = color_map.get(group_value)

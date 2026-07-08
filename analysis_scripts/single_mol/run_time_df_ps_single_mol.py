@@ -11,8 +11,7 @@ import pandas as pd
 
 analysis_functions_dir = Path(__file__).resolve().parent.parent.parent
 sys.path.append(str(analysis_functions_dir))
-from analysis_scripts.helper_scripts.archive.utils import unwrap_frame
-from analysis_scripts.helpers import load_npz, as_traj, read_param
+from analysis_scripts.helpers import load_npz, as_traj, read_param, unwrap_frame
 from analysis_scripts.phase_separation import (
     framewise_single_chain_rows_from_nlist_dict,
     calc_rg_from_positions,

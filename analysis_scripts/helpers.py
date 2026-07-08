@@ -14,10 +14,12 @@ from typing import Any
 # GLOBAL
 # ============================================================================
 
-# def unwrap_frame(frame:gsd.hoomd.Frame) -> np.ndarray:
-#     """Return unwrapped particle positions for one HOOMD frame."""
-#     box = freud.box.Box.from_box(frame.configuration.box)
-#     return box.unwrap(frame.particles.position, frame.particles.image)
+def unwrap_frame(frame: gsd.hoomd.Frame) -> NDArray[np.float64]:
+    """Return unwrapped particle positions for one HOOMD frame."""
+    box = freud.box.Box.from_box(frame.configuration.box)
+    positions = box.unwrap(frame.particles.position, frame.particles.image)
+
+    return np.asarray(positions, dtype=np.float64)
 
 def get_n_particles(traj: gsd.hoomd.HOOMDTrajectory) -> int:
     """Return the number of particles in the first trajectory frame."""

@@ -723,6 +723,24 @@ def get_log_KE_stats(traj: gsd.hoomd.HOOMDTrajectory, fraction_last:float = 0.3)
         f"ke_max_last_{ke_suffix}": float(np.max(ke_last)),
     }   
 
+def ke_stats_from_series(
+    ke: np.ndarray | pd.Series,
+    fraction_last: float,
+) -> dict[str, float]:
+    """Compute mean/std/max of KE over the last `fraction_last` of frames."""
+    ke = np.asarray(ke, dtype=float)
+    ke = ke[~np.isnan(ke)]
+    if len(ke) == 0:
+        return {}
+    n_last = max(1, int(len(ke) * fraction_last))
+    ke_last = ke[-n_last:]
+    suffix = int(fraction_last * 100)
+    return {
+        f"ke_mean_last_{suffix}": float(np.mean(ke_last)),
+        f"ke_std_last_{suffix}": float(np.std(ke_last)),
+        f"ke_max_last_{suffix}": float(np.max(ke_last)),
+    }
+
 # ============================================================================
 # MOLECULE GRAPH HELPERS
 # ============================================================================

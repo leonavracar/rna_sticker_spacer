@@ -126,7 +126,7 @@ def main() -> None:
         raise FileNotFoundError(f"Sweep directory not found: {sweep_path}")
 
     suffix = args.folder_name_suffix
-    out_csv = sweep_path / f"analysis_clusters_{suffix}.csv"
+    out_csv = sweep_path / f"analysis_clusters{suffix}.csv"
 
     if out_csv.exists() and not args.overwrite:
         raise FileExistsError(
@@ -138,7 +138,7 @@ def main() -> None:
     if args.run_ids is None:
         edge_npz_paths = sorted(
             sweep_path.glob(
-                f"*/computed_metrics_{suffix}/mol_graph/*_molecule_contact_edges.npz"
+                f"*/computed_metrics{suffix}/mol_graph/*_molecule_contact_edges.npz"
             )
         )
     else:
@@ -147,7 +147,7 @@ def main() -> None:
             edge_npz_paths.extend(
                 sorted(
                     sweep_path.glob(
-                        f"{run_id}_*/computed_metrics_{suffix}/mol_graph/*_molecule_contact_edges.npz"
+                        f"{run_id}_*/computed_metrics{suffix}/mol_graph/*_molecule_contact_edges.npz"
                     )
                 )
             )

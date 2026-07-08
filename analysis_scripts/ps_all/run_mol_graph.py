@@ -93,8 +93,8 @@ def main() -> None:
 
     for run_dir in run_dirs:
         suffix = args.folder_name_suffix
-        pairing_dir = run_dir / f"computed_metrics_{suffix}" / "pairing"
-        output_dir = run_dir / f"computed_metrics_{suffix}" / "mol_graph"
+        pairing_dir = run_dir / f"computed_metrics{suffix}" / "pairing"
+        output_dir = run_dir / f"computed_metrics{suffix}" / "mol_graph"
         output_dir.mkdir(parents=True, exist_ok=True)
 
         mol_lookup_file = pairing_dir / "molecule_lookup.npy"

@@ -86,7 +86,7 @@ def main() -> None:
     parser.add_argument(
         "--summary-fraction-last",
         type=float,
-        default=0.2,
+        default=0.1,
         help="Final fraction of frames used for late/last summary statistics.",
     )
 

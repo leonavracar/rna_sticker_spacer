@@ -415,7 +415,7 @@ def main() -> None:
 
         out_dir = run_dir / "framewise"
         out_dir.mkdir(exist_ok=True)
-        out_csv = out_dir / f"{npz_path.stem}_framewise_ps.csv"
+        out_csv = out_dir / f"{npz_path.stem}_ps.csv"
 
         if not mol_id_path.exists():
             print(f"Skipping {npz_path}: missing molecule_lookup.npy")
@@ -519,7 +519,7 @@ def main() -> None:
 
     if all_dfs:
         combined_df = pd.concat(all_dfs, ignore_index=True)
-        combined_csv = sweep_path / "analysis_mixture_framewise.csv"
+        combined_csv = sweep_path / "analysis_framewise.csv"
         combined_df.to_csv(combined_csv, index=False)
         print(f"Saved combined mixture framewise CSV: {combined_csv}")
 
