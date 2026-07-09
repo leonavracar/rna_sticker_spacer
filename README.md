@@ -153,7 +153,7 @@ The `molecule_file` file defines the RNA molecules in the system:
 ```json
 {
     {
-      "sequence": "AUCGAUCGAUCG",
+      "sequence": ["A", "U", "C", "G"],
       "count": 100,
     },
 }
