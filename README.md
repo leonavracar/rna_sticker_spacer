@@ -159,4 +159,3 @@ The `molecule_file` file defines the RNA molecules in the system:
 }
 ```
 
-## Output Files
