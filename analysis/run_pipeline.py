@@ -29,11 +29,7 @@ from src.framewise import (
     summarize_numeric,
 )
 from src.mixtures import identify_species, mixture_cluster_rows
-from src.single_chain import (
-    add_gsd_geometry,
-    mfe_pairs_from_csv,
-    single_chain_framewise,
-)
+from src.single_chain import mfe_pairs_from_csv, single_chain_framewise
 from src.utils.io import load_params_json
 
 
@@ -299,11 +295,6 @@ def analyze_trajectory(
                 int(config["pair_index_offset"]),
             )
             framewise = framewise.merge(mfe, on="frame", how="left")
-            framewise = add_gsd_geometry(
-                framewise,
-                paths.trajectory,
-                nm_per_sim_length_unit=float(config["nm_per_sim_length_unit"]),
-            )
         else:
             graph_path = find_archive(paths, "graph")
             if graph_path is None:
@@ -500,8 +491,8 @@ def finish_analysis(
     return destinations
 
 
-def write_energy(paths: TrajectoryPaths) -> Path:
-    """Opt-in energy pass: read saved frame IDs from NPZ, logs from GSD."""
+def write_energy(paths: TrajectoryPaths, config: dict[str, Any]) -> Path:
+    """Opt-in GSD pass for logged energies and single-chain geometry."""
     from src.energy import energy_framewise
 
     pairing_path, _ = pairing_inputs(paths)
@@ -511,7 +502,13 @@ def write_energy(paths: TrajectoryPaths) -> Path:
     dt = float(params["dt"]) if params.get("dt") is not None else None
     output = paths.output_run / "energy" / f"{paths.stem}.csv"
     output.parent.mkdir(parents=True, exist_ok=True)
-    energy_framewise(paths.trajectory, frames, dt).to_csv(output, index=False)
+    rg_unit = (
+        float(config["nm_per_sim_length_unit"])
+        if config["experiment"] == "single_chain" else None
+    )
+    energy_framewise(
+        paths.trajectory, frames, dt, nm_per_sim_length_unit=rg_unit
+    ).to_csv(output, index=False)
     return output
 
 
@@ -564,7 +561,7 @@ def main() -> None:
     for paths in trajectories:
         print(f"{args.stage}: {paths.input_run.name}/{paths.trajectory.name}", flush=True)
         if args.stage == "energy":
-            print(f"Saved optional energy table to {write_energy(paths)}", flush=True)
+            print(f"Saved optional energy table to {write_energy(paths, config)}", flush=True)
             continue
         pairing_changed = False
         if args.stage in ("pairing", "all"):
