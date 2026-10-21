@@ -26,19 +26,23 @@ def single_chain_framewise(pairing_npz, mfe_pairs: set[tuple[int,int]],
     return pd.DataFrame(rows)
 
 
-def radius_of_gyration(frame, scale: float = .6) -> float:
-    """Compute radius of gyration after unwrapping periodic coordinates."""
+def radius_of_gyration(frame, nm_per_sim_length_unit: float) -> float:
+    """Return radius of gyration in nanometers for a periodic trajectory frame."""
+    if nm_per_sim_length_unit <= 0:
+        raise ValueError("nm_per_sim_length_unit must be positive")
     import freud
     box = freud.box.Box.from_box(frame.configuration.box)
     positions = box.unwrap(frame.particles.position, frame.particles.image)
     displacement = positions - positions.mean(axis=0)
-    return float(np.sqrt(np.mean(np.sum(displacement**2, axis=1))) * scale)
+    return float(np.sqrt(np.mean(np.sum(displacement**2, axis=1))) * nm_per_sim_length_unit)
 
 
-def add_gsd_geometry(df: pd.DataFrame, trajectory_path, scale: float = .6) -> pd.DataFrame:
+def add_gsd_geometry(
+    df: pd.DataFrame, trajectory_path, nm_per_sim_length_unit: float
+) -> pd.DataFrame:
     import gsd.hoomd
     out = df.copy()
     with gsd.hoomd.open(str(trajectory_path), "r") as traj:
-        out["Rg_nm"] = [radius_of_gyration(traj[int(i)], scale) for i in out["frame"]]
+        out["Rg_nm"] = [radius_of_gyration(traj[int(i)], nm_per_sim_length_unit) for i in out["frame"]]
         out["step"] = [int(traj[int(i)].configuration.step) for i in out["frame"]]
     return out
