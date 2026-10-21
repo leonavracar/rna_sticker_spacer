@@ -1,5 +1,6 @@
 experiment: reentrance
 late_fraction: 0.10
+nm_per_sim_length_unit: 0.6
 min_contacts: 2
 recurrence_window: 20
 cluster_binning: molecule_count
