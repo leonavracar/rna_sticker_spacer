@@ -215,9 +215,11 @@ def compute_filtered_nlist_base_pairs_traj(
     ambiguity_rates = []
     n_pre_values = []
     n_post_values = []
+    steps = []
     molecule_lookup_table = make_molecule_lookup_table(traj[0])
     for frame_idx in sampled_indices:
         frame = traj[frame_idx]
+        steps.append(int(frame.configuration.step))
         nlist_filt, error_rate, n_pre, n_post = get_filtered_nlist_base_pairs(
             frame=frame,
             r_min=r_min,
@@ -233,6 +235,7 @@ def compute_filtered_nlist_base_pairs_traj(
         n_pre_values.append(n_pre)
         n_post_values.append(n_post)
 
+    nlist_dict["steps"] = np.asarray(steps, dtype=np.int64)
     nlist_dict["error_rates"] = np.asarray(ambiguity_rates)
     nlist_dict["n_pre"] = np.asarray(n_pre_values)
     nlist_dict["n_post"] = np.asarray(n_post_values)
