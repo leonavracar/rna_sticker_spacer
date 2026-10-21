@@ -180,9 +180,12 @@ def analyze_trajectory(run_dir: Path, traj: Path, config: dict, sweep: Path):
     return frame,bin_summary,summary,extras,ranked
 
 
-def write_results(sweep: Path, outputs: list[tuple], save_framewise: bool):
+def write_results(sweep: Path, outputs: list[tuple], save_framewise: bool,
+                  run_ids: list[str] | None = None):
     target=sweep/"analysis"
-    target.mkdir(exist_ok=True)
+    if run_ids:
+        target=target/"selected_runs"/("_".join(sorted(run_ids)))
+    target.mkdir(parents=True, exist_ok=True)
     frames, binned, summary, extras, ranks = zip(*outputs)
     pd.DataFrame(summary).to_csv(target/"replicate_summary.csv",index=False)
     if any(not x.empty for x in binned):
@@ -211,8 +214,6 @@ def main():
     p.add_argument("--overwrite-npz",action="store_true",help="Explicitly regenerate existing NPZ inputs")
     p.add_argument("--save-framewise",action="store_true")
     args=p.parse_args()
-    if args.run_ids and args.stage in ("analyze", "all"):
-        p.error("--run-ids is supported for pairing and graphs only; full analysis writes sweep-level CSVs")
     sweep=args.sweep.resolve()
     if not sweep.is_dir():
         p.error(f"Not a sweep directory: {sweep}")
@@ -229,7 +230,7 @@ def main():
                 print(f"Analyzing {run_dir.name}/{traj.name}",flush=True)
                 results.append(analyze_trajectory(run_dir,traj,config,sweep))
     if results:
-        write_results(sweep,results,args.save_framewise)
+        write_results(sweep,results,args.save_framewise,args.run_ids)
         print(f"Saved analysis summaries: {sweep/'analysis'}")
     elif args.stage=="analyze":
         raise RuntimeError("No trajectories were found to analyze")
