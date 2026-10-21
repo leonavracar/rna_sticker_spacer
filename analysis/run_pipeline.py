@@ -34,7 +34,7 @@ def run_directories(sweep: Path, run_ids: list[str] | None):
         yield path
 
 
-def make_missing_npzs(run_dir: Path, traj: Path, stages: set[str], overwrite: bool):
+def make_missing_npzs(run_dir: Path, traj: Path, stages: set[str], overwrite: bool, config: dict):
     """Preserve current pairing and edge NPZ format via already-existing core functions.
 
     Existing files are never rewritten unless --overwrite-npz is explicitly set.
@@ -57,7 +57,7 @@ def make_missing_npzs(run_dir: Path, traj: Path, stages: set[str], overwrite: bo
         r_opt = (float(params["r_att_base"]) + float(params["r_rep_base"])) / 2
         with gsd.hoomd.open(str(traj), "r") as gsd:
             data = compute_filtered_nlist_base_pairs_traj(
-                traj=gsd, r_min=0., r_max=.7, exclude_chain=3,
+                traj=gsd, r_min=float(config['r_min']), r_max=float(config['r_max']), exclude_chain=3,
                 stride=1, r_opt=r_opt)
             mol_id = make_molecule_lookup_table(gsd[0])
         pairing_dir.mkdir(parents=True, exist_ok=True)
@@ -228,7 +228,7 @@ def main():
     for run_dir in run_directories(sweep,args.run_ids):
         for traj in sorted(run_dir.glob("trajectory_*.gsd")):
             if stages:
-                make_missing_npzs(run_dir,traj,stages,args.overwrite_npz)
+                make_missing_npzs(run_dir,traj,stages,args.overwrite_npz,config)
             if args.stage in ("analyze","all"):
                 print(f"Analyzing {run_dir.name}/{traj.name}",flush=True)
                 results.append(analyze_trajectory(run_dir,traj,config,sweep))
