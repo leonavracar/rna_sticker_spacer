@@ -14,7 +14,7 @@ Main output:
 """
 
 def get_nlist(
-    frame: gsd.hoomd.Frame, r_max: float = 0.75
+    frame: gsd.hoomd.Frame, r_max: float = 0.7
 ) -> freud.locality.NeighborList:
     """Queries the neighbor list for a given frame using a cutoff radius."""
     aq = freud.locality.AABBQuery(
@@ -175,8 +175,8 @@ def valency_mask(qi, pi, distances, r_opt=0.5):
 
 def get_filtered_nlist_base_pairs(
     frame: gsd.hoomd.Frame,
-    r_min: float | None = 0.42,
-    r_max: float | None = 0.58,
+    r_min: float | None = 0.0,
+    r_max: float | None = 0.7,
     exclude_chain: int = 3,
     r_opt: float = 0.5,
     molecule_lookup_table: np.ndarray | None = None,
@@ -233,8 +233,8 @@ def get_filtered_nlist_base_pairs(
 
 def compute_filtered_nlist_base_pairs_traj(
     traj: gsd.hoomd.HOOMDTrajectory,
-    r_min: float | None = 0.42, # stricter lower boundary for deciding pairs
-    r_max: float | None = 0.58, # stricter upper boundary for deciding pairs
+    r_min: float | None = 0.0,
+    r_max: float | None = 0.7,
     exclude_chain: int = 3,
     stride: int = 1,
     r_opt: float = 0.5,
