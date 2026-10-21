@@ -1,0 +1,5 @@
+experiment: length_patterning
+late_fraction: 0.10
+min_contacts: 2
+recurrence_window: 20
+cluster_binning: particle_percentage
