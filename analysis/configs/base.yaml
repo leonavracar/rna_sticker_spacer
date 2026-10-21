@@ -1,5 +1,11 @@
-paths:
-  project_root: ${oc.env:PROJECT_ROOT}
-  raw_sim_data_dir_base:   ${paths.project_root}/bulk/output_dir
-  plot_output_dir_base:     ${paths.project_root}/analysis/analysis_output/plots
-  log_dir:      ${paths.project_root}/analysis/analysis_output/pipeline_logs
+pairing:
+  r_min: 0.0
+  r_max: 0.7
+  exclude_chain: 3
+  stride: 1
+
+graph:
+  min_contacts: 2
+
+analysis:
+  recurrence_window: 20
