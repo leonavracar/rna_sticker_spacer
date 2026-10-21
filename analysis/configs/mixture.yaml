@@ -8,6 +8,10 @@ r_min: 0.0
 r_max: 0.7
 exclude_chain: 3
 stride: 1
+drop_threshold: 5
+pairable_sites_by_species:
+  cag10: 20
+  cag47: 94
 species_by_length:
   30: cag10
   141: cag47
