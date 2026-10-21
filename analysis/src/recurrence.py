@@ -1,11 +1,10 @@
-"""Contact recurrence over saved frames (thesis Methods §5.4).
+"""Contact recurrence over sampled trajectory frames.
 
 Contacts are unordered particle pairs or qualifying molecule pairs. The score
 is 1 - n_distinct_contacts / n_contact_observations in the selected window.
 """
 from collections import deque
 from collections.abc import Iterable
-import numpy as np
 
 
 def pair_set(left: Iterable[int], right: Iterable[int]) -> set[tuple[int, int]]:
@@ -15,7 +14,7 @@ def pair_set(left: Iterable[int], right: Iterable[int]) -> set[tuple[int, int]]:
 
 
 def recurrence_from_contact_sets(contact_sets: Iterable[set[tuple[int, int]]]) -> float:
-    """Original scientific definition; NaN if no contacts occurred."""
+    """Return contact recurrence, or NaN if the window contains no contacts."""
     sets = list(contact_sets)
     n_observations = sum(len(s) for s in sets)
     if not n_observations:
