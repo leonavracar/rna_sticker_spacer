@@ -122,11 +122,20 @@ def analyze_trajectory(run_dir: Path, traj: Path, config: dict, sweep: Path):
             particle_recurrence=experiment=="length_patterning",
             recurrence_window=window)
         if experiment=="single_chain":
-            mfe_file = sweep / config["mfe_file"]
-            if not mfe_file.exists():
-                raise FileNotFoundError(f"Missing MFE reference {mfe_file}")
-            mfe = single_chain_framewise(pairing,mfe_pairs_from_csv(mfe_file),
-                                         int(config.get("pair_index_offset",1)))
+            reference_path = Path(config["viennarna_reference_file"])
+            if not reference_path.is_absolute():
+                reference_path = sweep / reference_path
+            if not reference_path.is_file():
+                raise FileNotFoundError(
+                    f"ViennaRNA reference CSV not found: {reference_path}. "
+                    "Set viennarna_reference_file in the single-chain config "
+                    "or pass --viennarna-reference."
+                )
+            mfe = single_chain_framewise(
+                pairing,
+                mfe_pairs_from_csv(reference_path),
+                int(config.get("pair_index_offset", 1)),
+            )
             frame = contacts.merge(mfe,on="frame",how="left")
             frame = add_gsd_geometry(frame,traj,float(config.get("length_scale_nm",.6)))
             bins = pd.DataFrame()
@@ -214,11 +223,20 @@ def main():
     p.add_argument("--run-ids",nargs="+",default=None)
     p.add_argument("--overwrite-npz",action="store_true",help="Explicitly regenerate existing NPZ inputs")
     p.add_argument("--save-framewise",action="store_true")
+    p.add_argument(
+        "--viennarna-reference",
+        type=Path,
+        help="ViennaRNA base-pair reference CSV (absolute path or relative to the sweep).",
+    )
     args=p.parse_args()
     sweep=args.sweep.resolve()
     if not sweep.is_dir():
         p.error(f"Not a sweep directory: {sweep}")
     config=yaml.safe_load((ANALYSIS_DIR/"configs"/f"{args.experiment}.yaml").read_text())
+    if args.viennarna_reference is not None:
+        if args.experiment != "single_chain":
+            p.error("--viennarna-reference is only valid for single_chain")
+        config["viennarna_reference_file"] = str(args.viennarna_reference)
     stages=set()
     if args.stage in ("pairing","all"): stages.add("pairing")
     if args.stage in ("graphs","all"): stages.add("graphs")
