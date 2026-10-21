@@ -1,9 +1,11 @@
-r_min: 0.0
-r_max: 0.7
 experiment: single_chain
 late_fraction: 0.20
 min_contacts: 2
 recurrence_window: 20
+r_min: 0.0
+r_max: 0.7
+exclude_chain: 3
+stride: 1
 length_scale_nm: 0.6
 mfe_file: duplex_mfe.csv
 pair_index_offset: 1
