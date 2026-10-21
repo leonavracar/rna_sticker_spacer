@@ -1,17 +1,8 @@
+"""Detect complementary nucleotide contacts in GSD trajectories."""
+
 import numpy as np
 import freud
 import gsd.hoomd
-
-"""Particle-level contact detection.
-
-This module identifies valid particle-particle contacts from GSD trajectories.
-Contacts are filtered by distance, base-complementarity rules, local
-chain-neighbor exclusion, and valency matching.
-
-Main output:
-    pairing NPZ with frame-wise qi/pi/distances arrays and molecule id mapped to particle
-    index.
-"""
 
 def get_nlist(
     frame: gsd.hoomd.Frame, r_max: float = 0.7
@@ -20,7 +11,6 @@ def get_nlist(
     aq = freud.locality.AABBQuery(
         box=frame.configuration.box, points=frame.particles.position
     )
-    # exclude_ii=True removes self-interactions (particle i with particle i)
     query_result = aq.query(
         frame.particles.position, dict(r_max=r_max, exclude_ii=True)
     )
@@ -28,27 +18,17 @@ def get_nlist(
 
 
 def find_molecule_ends(frame: gsd.hoomd.Frame) -> np.ndarray:
-    """Identifies the last particle index of each molecule chain."""
+    """Return particle indices ending each chain in an ordered-bond trajectory."""
     bonds = frame.bonds.group
-
-    # If there are no bonds, we can't find molecule ends this way
     if len(bonds) == 0:
         return np.array([], dtype=int)
-
-    # We compare the 'end' of bond N to the 'start' of bond N+1
-    # This mask will have length (len(bonds) - 1)
     break_mask = bonds[:-1, 1] != bonds[1:, 0]
-
-    # We apply the mask to 'bonds[:-1]' so the sizes match
-    # This gives us the particle ID at the end of every molecule except the last one
     return bonds[:-1][break_mask, 1]
 
 
 def make_molecule_lookup_table(frame: gsd.hoomd.Frame) -> np.ndarray:
-    """Creates an array mapping each particle index to a Molecule ID.
-    Assumes particles and bonds are ordered by molecule/chain."""
+    """Map each particle to a molecule ID; requires chain-ordered particles and bonds."""
     mol_ends = find_molecule_ends(frame)
-    # The 'Fence Post' method: start at -1, mark ends, end at N-1
     fence_posts = np.concatenate([[-1], mol_ends, [frame.particles.N - 1]])
 
     mol_lengths = np.diff(fence_posts)
@@ -67,13 +47,9 @@ def make_complementary_indexes(frame: gsd.hoomd.Frame) -> dict:
         "G": "C",
         "C": "G",
     }
-
-    # Map base names like "A" to their numeric type indices
     base_indexes = {}
     for idx in range(len(types)):
         base_indexes[types[idx]] = idx
-
-    # Convert base-name complement rules into type-index complement rules
     complementary_idxs = {}
     for key, value in complementary.items():
         complementary_idxs[base_indexes[key]] = base_indexes[value]
@@ -142,25 +118,17 @@ def neighbor_exclusion_mask(
 
 
 def valency_mask(qi, pi, distances, r_opt=0.5):
-    """For every candidate particle-pair contact, score it by abs(distance - r_opt).
-        A contact is kept only if both particles select each other as their best
-        available partner. This enforces one contact partner per particle."""
+    """Retain a pair only when both particles prefer each other by distance to r_opt."""
     if len(qi) == 0:
         return np.zeros(0, dtype=bool)
 
     scores = np.abs(distances - r_opt)
     idx_arr = np.arange(len(qi))
-
-    # Stack: each pair contributes two (particle, score, pair_idx) rows
     parts  = np.concatenate([qi, pi])
     scs    = np.concatenate([scores, scores])
     pidx   = np.concatenate([idx_arr, idx_arr])
-
-    # Sort by particle, then by score ascending (first row per particle is its best)
     order = np.lexsort((scs, parts))
     parts_s, scs_s, pidx_s = parts[order], scs[order], pidx[order]
-
-    # First occurrence of each particle = its best pair
     first = np.empty_like(parts_s, dtype=bool)
     first[0] = True
     first[1:] = parts_s[1:] != parts_s[:-1]
@@ -180,8 +148,8 @@ def get_filtered_nlist_base_pairs(
     exclude_chain: int = 3,
     r_opt: float = 0.5,
     molecule_lookup_table: np.ndarray | None = None,
-) -> tuple[freud.locality.NeighborList, float]:
-    """Generate a NeighborList of complementary base pairs with exclusions applied."""
+) -> tuple[freud.locality.NeighborList, float, int, int]:
+    """Apply complementarity, chain-distance, spatial and mutual-partner filters."""
     nlist = get_nlist(frame=frame, r_max=r_max)
 
     if molecule_lookup_table is None:
@@ -229,7 +197,7 @@ def get_filtered_nlist_base_pairs(
     n_post = len(nlist.query_point_indices)
     error_rate = (n_pre - n_post) / n_pre if n_pre > 0 else 0.0
 
-    return nlist, error_rate
+    return nlist, error_rate, n_pre, n_post
 
 def compute_filtered_nlist_base_pairs_traj(
     traj: gsd.hoomd.HOOMDTrajectory,
@@ -239,22 +207,18 @@ def compute_filtered_nlist_base_pairs_traj(
     stride: int = 1,
     r_opt: float = 0.5,
 ) -> dict[str, np.ndarray]:
-    """Runs get_filtered_nlist_base_pairs over entire trajectory.
-    Returns a dictionary with 4 np.arrays(frame_idx, base0, base1, distances) with columns frames.
-    """
+    """Collect filtered particle contacts and candidate counts for sampled frames."""
     nlist_dict = {}
-
-    # Stride handling
     n_frames = len(traj)
     sampled_indices = range(0, n_frames, stride)
-    # Add frame indices to nlist_dict
     nlist_dict["frame_indices"] = np.array(sampled_indices)
     ambiguity_rates = []
+    n_pre_values = []
+    n_post_values = []
     molecule_lookup_table = make_molecule_lookup_table(traj[0])
-    # loop and compute nlist over frames
     for frame_idx in sampled_indices:
         frame = traj[frame_idx]
-        nlist_filt, error_rate = get_filtered_nlist_base_pairs(
+        nlist_filt, error_rate, n_pre, n_post = get_filtered_nlist_base_pairs(
             frame=frame,
             r_min=r_min,
             r_max=r_max,
@@ -262,18 +226,15 @@ def compute_filtered_nlist_base_pairs_traj(
             r_opt=r_opt,
             molecule_lookup_table=molecule_lookup_table,
         )
-        # three attributes from nlist we are saving
         nlist_dict[f"qi_{frame_idx}"] = nlist_filt.query_point_indices
         nlist_dict[f"pi_{frame_idx}"] = nlist_filt.point_indices
         nlist_dict[f"distances_{frame_idx}"] = nlist_filt.distances
         ambiguity_rates.append(error_rate)
+        n_pre_values.append(n_pre)
+        n_post_values.append(n_post)
 
-    nlist_dict["error_rates"] = np.array(ambiguity_rates)  # shape (n_frames,)
-    nlist_dict["r_min"] = np.array([np.nan if r_min is None else r_min], dtype=float)
-    nlist_dict["r_max"] = np.array([np.nan if r_max is None else r_max], dtype=float)
-    nlist_dict["r_opt"] = np.array([r_opt], dtype=float)
-    nlist_dict["exclude_chain"] = np.array([exclude_chain], dtype=np.int64)
-    nlist_dict["stride"] = np.array([stride], dtype=np.int64)
-    
+    nlist_dict["error_rates"] = np.asarray(ambiguity_rates)
+    nlist_dict["n_pre"] = np.asarray(n_pre_values)
+    nlist_dict["n_post"] = np.asarray(n_post_values)
+
     return nlist_dict
-
