@@ -73,7 +73,7 @@ These entries are **not deletion instructions**. `REQUIRED` was explicitly reque
 | Area | Candidate metrics or outputs | Draft decision | Notes |
 |---|---|---|---|
 | Pairing | Complementary contact counts; inter-/intramolecular pairing; filtering/valency ambiguity rate | PROPOSED KEEP | Foundational inputs for other stages |
-| Clustering | Cluster-size distributions using absolute number of molecules and relative percentage of the system | **REQUIRED** | Drop separate mono/oligo/drop fractions; retain monomer as a valid distribution bin |
+| Clustering | Cluster-size distributions classified by **absolute molecule count** or by **particle fraction of total system material** | **REQUIRED** | Relative percentages use particles only; remove separate mono/oligo/drop summary metrics, not the monomer histogram category |
 | Graph | Edge count/density, mean degree, contact/edge strength mean and q90 | PROPOSED KEEP | Distinguish raw contacts from edges passing the threshold |
 | Mixtures | Species-resolved recruitment, mixed/pure components, homotypic/heterotypic contacts | PROPOSED KEEP | Generic metadata rather than `cag10` and `cag47` hard-coded |
 | Mixtures (advanced) | Cluster-resolved species composition, site-normalized contact saturation | DECIDE | Valuable but specialized and currently extensive |
@@ -81,7 +81,7 @@ These entries are **not deletion instructions**. `REQUIRED` was explicitly reque
 | Dynamics | Pair contact recurrence/persistence across windows, cluster persistence | DECIDE | Preserve if used to support claims/plots |
 | Thermodynamics | Potential, bonded/angle, SQD and kinetic energy traces | DECIDE | At least useful as diagnostics; may not need heavy summary exports |
 | Concentration | Density/box-derived concentrations and unit conversion | DECIDE | Useful contextual metadata if conversion assumptions documented |
-| Cluster binning | Absolute size bins and relative-percentage bins | **REQUIRED** | Bins are configurable; explicitly distinguish molecule fraction from particle/material fraction in mixtures |
+| Cluster binning | Thesis Table 5: molecule-count binning and total-particle-percentage binning | **REQUIRED** | For relative-size bin assignment **and** fraction displayed in each bin, use particle counts / total particle count, including length sweeps and mixtures |
 | Transitions | Smoothed feature-change scores and peak detection | DECIDE | Appears exploratory; no demonstrated requirement yet |
 | Statistical comparison | Replicate aggregation and permutation tests/adjusted p-values | PROPOSED KEEP | Locate authoritative thesis implementation before migration |
 | Geometry extras | Old three-bead-style dihedrals/stacking/inversion | TENTATIVE ARCHIVE | Not obviously part of present one-particle/base model |
@@ -147,8 +147,8 @@ These entries are **not deletion instructions**. `REQUIRED` was explicitly reque
 
 **Decisions from researcher**
 - **Remove standalone** `mono_frac`, `oligo_frac`, `drop_frac` and their seven-statistic replicate summaries from the *new output specification*. Do not delete the original computations until comparison tests pass.
-- Keep cluster size distributions, expressed either as **number of RNA molecules per component** or **size as a percentage of the total molecule population**, making differences in total chain count comparable across repeat-length systems. Still allow the monomer category (`cluster_size == 1`) inside distributions.
-- For mixed lengths, distinguish molecule-fraction and particle/material-fraction denominators (they are not interchangeable). Decide which one is used as a plot-axis definition per research question, and clearly label it.
+- Keep cluster size distributions classified either by **absolute molecule count per component** or by **percentage of all nucleotide particles in the system**, following thesis Methods §5.4 and Table 5. **Never use the total molecule count as the denominator for percentage-based cluster size.** Keep monomers (`cluster_size == 1`) as their own histogram bin.
+- For *every* percentage-based cluster distribution, including mixed lengths, compute the **fraction of all system particles** belonging to the cluster/bin. Absolute (non-percentage) cluster size is still the number of molecules. Species contributions and ranked-cluster sizes are also particle-weighted as in the thesis.
 - Rewrite figure-generating notebooks to **import tested calculation and plotting functions**. Notebooks should retain experiment selection, presentation, scientific interpretation, and light exploratory code. No copied complex implementations.
 - Retain **XY/XZ/YZ projections**, including parameter-grid plots, and retain **interactive PyVis networks** in the visualization scope.
 - Reduce the number of exported metrics and redundant summary statistics; avoid exporting everything automatically.
@@ -174,7 +174,7 @@ These entries are **not deletion instructions**. `REQUIRED` was explicitly reque
 **`analysis_cluster_binned.csv`:**
 - 1,920,000 framewise data rows, 27 columns.
 - Contains `mol_*` categories (absolute sizes), `pct_*` categories (currently based on `one_cluster_particle_frac`) and `mol_sum`/`pct_sum` validation columns.
-- **Important semantic distinction:** for equal-length chains, molecule count fraction and particle fraction per component coincide; for mixtures they diverge. The proposed relative-length comparison should explicitly define the size measure as `cluster_size_molecules / n_molecules_total`; optionally also export particle material fractions for mixture analyses. Do not silently relabel existing `pct_*` values without checking meaning.
+- **Confirmed from thesis Methods §5.4 and Table 5:** `pct_*` bins classify each cluster by the fraction of **total nucleotide particles** it contains. For homogeneous systems `p_c = s_c * chain_length / N_particles`; for mixtures `p_c = sum(chain_lengths[m] for m in component) / N_particles`. The value in a percentage-bin column is the sum of these particle fractions for all components assigned to that bin. The molecule count is used only for the absolute-size `mol_*` bin identity, *not* as a percentage denominator. For homogeneous systems, molecule and particle weights happen to coincide; compute particle weights explicitly anyway.
 - Store an optional long, detailed framewise table for debugging / advanced analysis, but make late-window **per-replicate binned distributions** the plotting-ready default. A compressed columnar format may be preferable for millions of frame rows, with CSV export as needed.
 - `mol_sum` and `pct_sum` should be validation checks in the pipeline/tests, not necessarily permanently exported columns.
 
@@ -186,14 +186,51 @@ These entries are **not deletion instructions**. `REQUIRED` was explicitly reque
 
 1. **Intermediate / cache:** pairing NPZ, molecule mapping, weighted contact-edge NPZ; provenance attached. No automatic human-facing wide CSV.
 2. **Detailed optional:** framewise graph/contact/cluster distributions and time series; useful for diagnostics and reproducing particular figures; may be large.
-3. **Plotting-ready default:** per-replicate binned cluster distribution by absolute and relative size; *selected* per-replicate metrics averaged over final 10%; separate condition-level uncertainty across replicates.
+3. **Plotting-ready default:** per-replicate binned cluster distribution by absolute molecule count and relative particle percentage; *selected* per-replicate metrics averaged over an **experiment-specific** final fraction: single-chain 20%, RQ1 reentrance 10%, RQ2 length/patterning 10%, RQ3 mixture 5%, as specified in thesis Methods §5.3; separate condition-level uncertainty across replicates.
 4. **Domain extensions:** explicit mixture-specific composition/recruitment, optional detailed cluster resolution, single-chain validation, and separate equilibration diagnostics. Do not force all fields into a universal 95-column CSV.
 5. **Visual artifacts:** authored/curated notebook panels, PNG/PDF figure export, optional interactive PyVis HTML.
+
+
+### Thesis-verified metric contract (confirmed by researcher)
+
+Source: *Biophysical Insights into Repeat-RNA Clustering from Coarse-Grained Molecular Dynamics*, Methods §5.4, pp. 21–24, especially **Table 5** (p. 23); simulation averaging fractions in Methods §5.3, pp. 17–19. The **scientific definitions in the thesis** take precedence over earlier provisional recommendations in this audit.
+
+#### Cluster-size definitions
+
+- Graph: one node per molecule, undirected edges between molecule pairs with **at least two complementary intermolecular base-pair contacts in one frame** (`n_min = 2`). Cluster = connected component including isolated nodes.
+- Absolute size: `s_c = number_of_molecules_in_cluster` (integer).
+- Percentage size (use *particles exclusively*): `p_c = sum(length[m] for m in cluster) / N_particles`, in `[0,1]`. For homogeneous chain length `l_RNA`, `p_c = s_c * l_RNA / N_particles` (thesis notation).
+- Absolute-size bins (by `s_c`): `1` monomer; `2` dimer; `3` trimer; `4–9`; `10–19`; `20–49`; `>=50`.
+- Relative-size bins (by `p_c`): monomers (`s_c == 1`) first, then **multimers only**: `0 < p_c < .02`; `.02 <= p_c < .03`; `.03 <= p_c < .10`; `.10 <= p_c < .20`; `.20 <= p_c < .50`; `.50 <= p_c <= 1`.
+- **Bar height / per-bin fraction:** `fraction_of_particles_in_bin = sum(number_of_particles_in_component for components_in_bin) / N_particles`. In the homogeneous special case this equals a molecule-weighted fraction; do not switch denominator in code.
+- **Invariants:** all clusters partition the molecules; no particle counted twice; sum of the mutually exclusive histogram bin fractions equals 1 (within numerical tolerance).
+- **Ranked clusters for mixtures:** sort multimeric clusters by number of particles *within each frame*; report top three separately, remaining multimers together, and monomers together. Each ranked category is weighted by the fraction of all particles. Ranks do not track a persistent cluster identity.
+
+#### Do not confuse the two quantities in plot labels
+
+- `cluster_size_molecules` or `s_c` is a **count** used to assign the left-hand Table 5 bins.
+- `cluster_particle_fraction` or `p_c` is a **fraction of the system's particles** used for the right-hand Table 5 bins.
+- `particle_fraction_in_bin` is the fraction of total **particles** in components whose size falls into a given category.
+- For mixed chains, one molecule's contribution is proportional to its length, not one equal unit. All percentage values concerning cluster material or composition use particle weights.
+- Terms `mono_frac`, `oligo_frac`, `drop_frac` from legacy framewise summaries are **not** retained as independent scalar observables; the monomer *distribution bin* remains.
+
+#### Method/provenance settings to test against thesis
+
+- Pair detection: `r_max = 0.7` in simulation length units, complementarity A-U/G-C, intrachain exclusion at separation `|i-j| < 4`, mutual choice of closest candidate to `r_e = 0.50`.
+- Contact graph: qualifying molecule pair when `n_min = 2` filtered base pairs; weighted edge count = number of qualifying intermolecular base-pair contacts.
+- Recurrence: rolling window of **20** saved frames in the thesis (Methods §5.4, p. 24). Some legacy runners default to 25; ensure replay configuration matches the research question rather than assuming the code default reproduced the thesis.
+- Averaging fractions: **single-chain 20%**, **RQ1 reentrance 10%**, **RQ2 repeat length/scrambled 10%**, **RQ3 mixture 5%**. A global 10% default would not reproduce every thesis figure.
+- Diagnostic energy traces are described as equilibration diagnostics rather than necessarily required scientific reporting tables.
+
+#### Regression fixtures
+
+Use the uploaded `analysis_cluster_binned.csv` as an example of the existing `mol_*`/`pct_*` output schema. The percentage-bin outputs should reproduce the thesis particle-weighted definitions. When turning actual examples into fixtures, extract only a tiny deterministic subset; avoid committing the multi-million-row CSV as a test dependency.
+
 
 ### Open issues for researcher (prioritized)
 
 - Beyond cluster-size distributions, which **few scalar metrics** must be shown for reentrance: e.g. largest-cluster fraction, contact-graph degree/density, contact strength? This is a scientific decision; default exports should not dictate it.
 - Do we keep contact recurrence/persistence, and are kinetic/potential energy outputs required as *diagnostics only*?
-- For % cluster size plots, confirm whether the requested denominator is all molecules (length comparison) and whether particle material fraction is additionally desired for mixtures.
+- **Resolved:** % cluster sizes and plotted percentage-bin values always use `N_particles` as denominator, including RQ2 length comparisons and RQ3 mixed systems. Verify fidelity to thesis Table 5 with tests.
 - Which other RQ-specific figures deserve first-class generation: homogeneous reentrance, length sweep, scrambled control, single-chain validation, and CAG10+CAG47 mixture?
 - Inspect remaining notebook sources and verify generated PyVis HTML visually before settling style/API.
