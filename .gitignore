@@ -39,3 +39,6 @@ conda-env/
 # System files
 .DS_Store
 analysis_scripts/helper_scripts/nohup.out
+
+# Local outputs from the analysis pipeline
+/analysis_results/
