@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Analysis entry point. Existing NPZ naming and generation logic are preserved.
+"""Run nucleotide-pairing, molecule-contact and experiment analyses.
 
 Examples:
     python analysis/run_pipeline.py --sweep bulk/output_dir/50b_reentrant_full --experiment reentrance --stage analyze
@@ -35,10 +35,7 @@ def run_directories(sweep: Path, run_ids: list[str] | None):
 
 
 def make_missing_npzs(run_dir: Path, traj: Path, stages: set[str], overwrite: bool, config: dict):
-    """Preserve current pairing and edge NPZ format via already-existing core functions.
-
-    Existing files are never rewritten unless --overwrite-npz is explicitly set.
-    """
+    """Generate requested molecular-contact archives."""
     from src.pairing import compute_filtered_nlist_base_pairs_traj, make_molecule_lookup_table
     from src.molecule_graph import build_molecule_contact_edge_dict_from_pairing_npz
     import gsd.hoomd
@@ -57,12 +54,12 @@ def make_missing_npzs(run_dir: Path, traj: Path, stages: set[str], overwrite: bo
         r_opt = (float(params["r_att_base"]) + float(params["r_rep_base"])) / 2
         with gsd.hoomd.open(str(traj), "r") as gsd:
             data = compute_filtered_nlist_base_pairs_traj(
-                traj=gsd, r_min=float(config['r_min']), r_max=float(config['r_max']), exclude_chain=3,
-                stride=1, r_opt=r_opt)
+                traj=gsd, r_min=float(config['r_min']), r_max=float(config['r_max']),
+                exclude_chain=int(config['exclude_chain']),
+                stride=int(config['stride']), r_opt=r_opt)
             mol_id = make_molecule_lookup_table(gsd[0])
         pairing_dir.mkdir(parents=True, exist_ok=True)
-        # Use identical keys as current pairing outputs.
-        if overwrite or not pairing_path.is_file():
+            if overwrite or not pairing_path.is_file():
             np.savez(pairing_path, **data)
         if overwrite or not lookup_path.is_file():
             np.save(lookup_path, mol_id)
@@ -74,9 +71,7 @@ def make_missing_npzs(run_dir: Path, traj: Path, stages: set[str], overwrite: bo
                 pairing, np.load(lookup_path))
         graph_dir.mkdir(parents=True, exist_ok=True)
         np.savez(graph_path, **graph_data)
-    # The intramolecular format already exists; use the original algorithm until
-    # its exact sparse output handling is moved to the src module.
-    if "graphs" in stages and (overwrite or not intra_path.is_file()):
+    if "graphs" in stages and config["experiment"] == "mixture" and (overwrite or not intra_path.is_file()):
         if not pairing_path.exists() or not lookup_path.exists():
             raise FileNotFoundError(f"Intramolecular inputs missing for {traj}")
         from collections import Counter
@@ -143,7 +138,7 @@ def analyze_trajectory(run_dir: Path, traj: Path, config: dict, sweep: Path):
             with np.load(graph_path) as edges:
                 species = identify_species(lengths,
                     {int(k):v for k,v in config["species_by_length"].items()}) if experiment=="mixture" else None
-                graph,bins,ranked,_ = component_frame_rows(
+                graph,bins,ranked = component_frame_rows(
                     edge_frames(edges),lengths,min_contacts,window,
                     with_recurrence=(experiment=="reentrance"),
                     with_bins=True,with_ranks=experiment=="length_patterning")
@@ -198,8 +193,7 @@ def write_results(sweep: Path, outputs: list[tuple], save_framewise: bool):
         if tables:
             pd.concat(tables,ignore_index=True).to_csv(target/f"{name}.csv",index=False)
     if any(not x.empty for x in ranks):
-        # Only export ranked clusters for length/patterning if requested by profile.
-        pd.concat([x for x in ranks if not x.empty],ignore_index=True).to_csv(
+            pd.concat([x for x in ranks if not x.empty],ignore_index=True).to_csv(
             target/"ranked_clusters_framewise.csv",index=False)
     if save_framewise:
         folder=target/"framewise"; folder.mkdir(exist_ok=True)
@@ -212,7 +206,7 @@ def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument("--sweep",type=Path,required=True)
     p.add_argument("--experiment",choices=["single_chain","reentrance","length_patterning","mixture"],required=True)
-    p.add_argument("--stage",choices=["pairing","graphs","analyze","all","summarize"],default="analyze")
+    p.add_argument("--stage",choices=["pairing","graphs","analyze","all"],default="analyze")
     p.add_argument("--run-ids",nargs="+",default=None)
     p.add_argument("--overwrite-npz",action="store_true",help="Explicitly regenerate existing NPZ inputs")
     p.add_argument("--save-framewise",action="store_true")
@@ -232,9 +226,9 @@ def main():
             if args.stage in ("analyze","all"):
                 print(f"Analyzing {run_dir.name}/{traj.name}",flush=True)
                 results.append(analyze_trajectory(run_dir,traj,config,sweep))
-    if args.stage=="summarize":
-        p.error("Use --stage analyze: it performs late-window summaries from existing NPZs")
     if results:
+        if args.run_ids:
+            p.error("Selected-run analysis cannot overwrite full-sweep summary files. Run without --run-ids for analysis.")
         write_results(sweep,results,args.save_framewise)
         print(f"Saved analysis summaries: {sweep/'analysis'}")
     elif args.stage=="analyze":
