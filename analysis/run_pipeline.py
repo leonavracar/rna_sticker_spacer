@@ -23,7 +23,6 @@ from src.framewise import (
     component_frame_rows,
     contact_frame_rows,
     edge_frames,
-    late_window,
     molecule_lengths,
     summarize_bin_frames,
     summarize_numeric,
@@ -226,12 +225,11 @@ def summarize_table(
         for name in selected.select_dtypes(include="number").columns
         if name not in {"frame", *group_columns}
     ]
+    if not group_columns:
+        return pd.DataFrame([selected[numeric].mean().to_dict()])
     if not numeric:
         return selected[group_columns].drop_duplicates().reset_index(drop=True)
-    return (
-        selected.groupby(group_columns, as_index=False, dropna=False)[numeric]
-        .mean()
-    )
+    return selected.groupby(group_columns, as_index=False, dropna=False)[numeric].mean()
 
 
 def analyze_trajectory(
