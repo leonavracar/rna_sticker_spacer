@@ -1,0 +1,8 @@
+experiment: mixture
+late_fraction: 0.05
+min_contacts: 2
+recurrence_window: 20
+cluster_binning: particle_percentage
+species_by_length:
+  30: cag10
+  141: cag47
