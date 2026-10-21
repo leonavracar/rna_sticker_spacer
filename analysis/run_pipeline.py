@@ -386,18 +386,10 @@ def analyze_trajectory(
     )
 
 
-def write_results(
-    output_sweep: Path,
-    results: list[AnalysisResult],
-    run_ids: list[str] | None,
-    save_framewise: bool,
-) -> Path:
-    """Write sweep summaries and optional run-level replicate time series."""
-    analysis_dir = output_sweep / "analysis"
-    if run_ids:
-        analysis_dir /= "selected_runs"
-        analysis_dir /= "_".join(sorted(set(run_ids)))
-
+def write_analysis_tables(
+    analysis_dir: Path, results: list[AnalysisResult]
+) -> None:
+    """Write compact CSV tables for one parameter run or the full sweep."""
     analysis_dir.mkdir(parents=True, exist_ok=True)
     pd.DataFrame([result.summary for result in results]).to_csv(
         analysis_dir / "replicate_summary.csv", index=False
@@ -420,14 +412,35 @@ def write_results(
                 analysis_dir / f"{name}.csv", index=False
             )
 
+
+def write_results(
+    output_sweep: Path,
+    results: list[AnalysisResult],
+    run_ids: list[str] | None,
+    save_framewise: bool,
+) -> list[Path]:
+    """Save selected-run summaries per run, or full-sweep summaries together."""
+    destinations: list[Path] = []
+    if run_ids:
+        by_run: dict[Path, list[AnalysisResult]] = {}
+        for result in results:
+            by_run.setdefault(result.paths.output_run, []).append(result)
+        for run_dir, run_results in by_run.items():
+            analysis_dir = run_dir / "analysis"
+            write_analysis_tables(analysis_dir, run_results)
+            destinations.append(analysis_dir)
+    else:
+        analysis_dir = output_sweep / "analysis"
+        write_analysis_tables(analysis_dir, results)
+        destinations.append(analysis_dir)
+
     if save_framewise:
         for result in results:
             output = result.paths.output_run / "framewise" / f"{result.paths.stem}.csv"
             output.parent.mkdir(parents=True, exist_ok=True)
             result.framewise.to_csv(output, index=False)
 
-    return analysis_dir
-
+    return destinations
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -486,10 +499,11 @@ def main() -> None:
             results.append(analyze_trajectory(paths, input_sweep, config))
 
     if results:
-        destination = write_results(
+        destinations = write_results(
             output_sweep, results, args.run_ids, args.save_framewise
         )
-        print(f"Saved analysis tables to {destination}")
+        for destination in destinations:
+            print(f"Saved analysis tables to {destination}")
     else:
         print(f"Generated archives, if needed, under {output_sweep}")
 
