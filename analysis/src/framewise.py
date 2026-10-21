@@ -1,7 +1,6 @@
-"""Reusable framewise calculations from existing pairing / molecule-edge NPZs."""
+"""Framewise contact, molecular graph and cluster calculations."""
 from __future__ import annotations
 
-from collections import Counter
 import numpy as np
 import pandas as pd
 
@@ -31,7 +30,8 @@ def edge_frames(edge_npz) -> dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]
     frame, a, b, weights = frame[order], a[order], b[order], weights[order]
     out = {}
     for f in np.asarray(edge_npz["frame_indices"], dtype=int):
-        l, r = np.searchsorted(frame, f, side=("left", "right"))
+        l = np.searchsorted(frame, f, side="left")
+        r = np.searchsorted(frame, f, side="right")
         out[int(f)] = a[l:r], b[l:r], weights[l:r]
     return out
 
@@ -46,12 +46,8 @@ def component_frame_rows(
     with_ranks: bool = False,
     species: np.ndarray | None = None,
 ):
-    """Return (graph_framewise, binned_frames, ranked_frames, component_details).
-
-    Graphs come from the *existing* unfiltered-by-threshold molecule-edge NPZ,
-    with the >= min_contacts criterion applied only for analysis.
-    """
-    graph_rows, bins_rows, ranks_rows, components_rows = [], [], [], []
+    """Return graph, bin, ranked-cluster and component data for each frame."""
+    graph_rows, bins_rows, ranks_rows = [], [], []
     n_molecules = len(lengths)
     recurrence = RollingRecurrence(recurrence_window) if with_recurrence else None
     for frame, (a, b, weights) in frames.items():
@@ -76,12 +72,7 @@ def component_frame_rows(
         if with_ranks:
             for record in ranked_cluster_rows(comps, lengths, species):
                 ranks_rows.append({"frame": int(frame), **record})
-        for idx, ids in enumerate(comps):
-            components_rows.append({"frame": int(frame), "component": idx,
-                                    "members": ids, "n_molecules": len(ids),
-                                    "n_particles": int(lengths[ids].sum())})
-    return (pd.DataFrame(graph_rows), pd.DataFrame(bins_rows),
-            pd.DataFrame(ranks_rows), components_rows)
+    return pd.DataFrame(graph_rows), pd.DataFrame(bins_rows), pd.DataFrame(ranks_rows)
 
 
 def contact_frame_rows(pairing_npz, molecule_lookup: np.ndarray,
