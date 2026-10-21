@@ -129,3 +129,48 @@ def build_molecule_contact_edge_dict_from_pairing_npz(
         "frame_indices": frame_indices,
         "n_molecules": np.array([n_molecules], dtype=np.int64),
     }
+
+
+def build_molecule_intra_contact_dict_from_pairing_npz(
+    pairing_npz: np.lib.npyio.NpzFile,
+    molecule_id: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """Count unique intramolecular base pairs per molecule and saved frame.
+
+    Only nonzero counts are stored; omitted molecules have zero contacts.
+    """
+    molecule_id = np.asarray(molecule_id, dtype=np.int64)
+    frame_indices = np.asarray(pairing_npz["frame_indices"], dtype=np.int64)
+    frames: list[int] = []
+    molecules: list[int] = []
+    contacts: list[int] = []
+
+    for frame_idx in frame_indices:
+        frame = int(frame_idx)
+        qi = pairing_npz[f"qi_{frame}"]
+        pi = pairing_npz[f"pi_{frame}"]
+        counts: Counter[int] = Counter()
+        seen: set[tuple[int, int]] = set()
+
+        for q, p in zip(qi, pi):
+            i, j = int(q), int(p)
+            if i == j or molecule_id[i] != molecule_id[j]:
+                continue
+            pair = (min(i, j), max(i, j))
+            if pair in seen:
+                continue
+            seen.add(pair)
+            counts[int(molecule_id[i])] += 1
+
+        for molecule, count in counts.items():
+            frames.append(frame)
+            molecules.append(molecule)
+            contacts.append(count)
+
+    return {
+        "frame": np.asarray(frames, dtype=np.int64),
+        "mol_id": np.asarray(molecules, dtype=np.int64),
+        "n_intra_contacts": np.asarray(contacts, dtype=np.int64),
+        "frame_indices": frame_indices,
+        "n_molecules": np.asarray([int(molecule_id.max()) + 1], dtype=np.int64),
+    }
