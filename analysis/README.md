@@ -68,3 +68,18 @@ analysis_results/
 The replicate summary has one row per independent trajectory. Cluster fractions
 are particle-weighted. Late-window averages are calculated separately per
 replicate, rather than pooling trajectories across a parameter combination.
+
+## Physical concentrations
+
+The original molarity calculations are included in each per-replicate summary
+and cluster-distribution table:
+
+- `conc_mol_per_L`: RNA molecule concentration in mol/L.
+- `conc_nuc_per_L`: nucleotide/bead concentration in mol/L.
+
+The simulation `density` is bead number density. The box volume is
+`n_particles / density` in simulation volume units, converted to liters
+using `nm_per_sim_length_unit**3 * 1e-24`. Both concentrations use Avogadro's
+constant and the actual number of molecules/particles from the saved lookup.
+The `nm_per_sim_length_unit` value is configured for each experiment and is
+also used to convert single-chain radius of gyration to nm.
