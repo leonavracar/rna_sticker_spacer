@@ -100,8 +100,8 @@ Proposed eventual interface (illustrative only):
 ~~~python
 from rna_analysis.visualization.networks import make_pyvis_graph
 
-graph = load_molecule_graph(edge_file, frame=3999, min_contacts=2)
-make_pyvis_graph(graph, output_html=`results/network.html`, style=`weighted`)
+graph = load_molecule_graph(edge_file, frame=3999, min_contacts=2)  # proposed API
+make_pyvis_graph(graph, output_html="results/network.html", style="weighted")
 ~~~
 
 Canonical graph construction belongs in shared scientific code; the PyVis renderer **receives the graph** and never recomputes clusters using a conflicting cutoff. Use `pyvis` as an optional dependency so core numerical workflows work without it.
