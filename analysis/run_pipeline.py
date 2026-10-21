@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""Run nucleotide-pairing, molecule-contact and experiment analyses.
+"""Run RNA pairing, molecular graph and experiment-specific analyses.
 
-Examples:
-    python analysis/run_pipeline.py --sweep bulk/output_dir/50b_reentrant_full --experiment reentrance --stage analyze
-    python analysis/run_pipeline.py --sweep bulk/output_dir/52b_mixed_repeat_length_full --experiment mixture --stage all
+Input trajectories, parameters and cached NPZ files are read from --sweep.
+All newly generated files are written beneath --output-root / sweep_name.
 """
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 import sys
+from typing import Any, Iterator
 
 import numpy as np
 import pandas as pd
@@ -17,244 +18,470 @@ import yaml
 
 ANALYSIS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(ANALYSIS_DIR))
-from src.utils.io import load_params_json
-from src.framewise import (edge_frames, molecule_lengths, component_frame_rows,
-                           contact_frame_rows, summarize_numeric, summarize_bin_frames,
-                           late_window)
+
+from src.framewise import (
+    component_frame_rows,
+    contact_frame_rows,
+    edge_frames,
+    late_window,
+    molecule_lengths,
+    summarize_bin_frames,
+    summarize_numeric,
+)
 from src.mixtures import identify_species, mixture_cluster_rows
-from src.single_chain import single_chain_framewise, add_gsd_geometry, mfe_pairs_from_csv
+from src.single_chain import (
+    add_gsd_geometry,
+    mfe_pairs_from_csv,
+    single_chain_framewise,
+)
+from src.utils.io import load_params_json
 
 
-def run_directories(sweep: Path, run_ids: list[str] | None):
-    for path in sorted(sweep.iterdir()):
-        if not path.is_dir() or not (path / "params.json").is_file():
+@dataclass(frozen=True)
+class TrajectoryPaths:
+    """Paths for one trajectory within its parameter run."""
+
+    input_run: Path
+    output_run: Path
+    trajectory: Path
+
+    @property
+    def stem(self) -> str:
+        return self.trajectory.stem
+
+
+@dataclass
+class AnalysisResult:
+    """Per-replicate analysis tables and late-window summaries."""
+
+    paths: TrajectoryPaths
+    framewise: pd.DataFrame
+    bins: pd.DataFrame
+    summary: dict[str, Any]
+    extra_tables: dict[str, pd.DataFrame]
+
+
+def archive_path(run_dir: Path, kind: str, stem: str) -> Path:
+    """Resolve the established NPZ and molecule-lookup filenames."""
+    base = run_dir / "computed_metrics"
+    if kind == "pairing":
+        return base / "pairing" / f"{stem}_pairing.npz"
+    if kind == "lookup":
+        return base / "pairing" / "molecule_lookup.npy"
+    if kind == "graph":
+        return base / "mol_graph" / f"{stem}_molecule_contact_edges.npz"
+    if kind == "intramol":
+        return base / "intramol_graph" / f"{stem}_intra_molecule_contacts.npz"
+    raise ValueError(f"Unknown archive type: {kind}")
+
+
+def find_archive(paths: TrajectoryPaths, kind: str) -> Path | None:
+    """Prefer a generated archive, otherwise reuse the original sweep's archive."""
+    for run_dir in (paths.output_run, paths.input_run):
+        candidate = archive_path(run_dir, kind, paths.stem)
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def pairing_inputs(paths: TrajectoryPaths) -> tuple[Path, Path]:
+    """Read pairing data and molecule IDs from the same run-directory tree."""
+    for run_dir in (paths.output_run, paths.input_run):
+        pairing = archive_path(run_dir, "pairing", paths.stem)
+        lookup = archive_path(run_dir, "lookup", paths.stem)
+        if pairing.is_file() and lookup.is_file():
+            return pairing, lookup
+    raise FileNotFoundError(
+        f"No complete pairing archive and molecule lookup for {paths.trajectory}. "
+        "Run --stage pairing or --stage all to generate them."
+    )
+
+
+def iter_trajectories(
+    input_sweep: Path, output_sweep: Path, run_ids: list[str] | None
+) -> Iterator[TrajectoryPaths]:
+    """Select parameter runs; every trajectory file is an independent replicate."""
+    selected = set(run_ids) if run_ids else None
+    for input_run in sorted(input_sweep.iterdir()):
+        if not input_run.is_dir() or not (input_run / "params.json").is_file():
             continue
-        if run_ids and path.name.split("_", 1)[0] not in run_ids:
+        if selected is not None and input_run.name.split("_", 1)[0] not in selected:
             continue
-        yield path
+        for trajectory in sorted(input_run.glob("trajectory_*.gsd")):
+            yield TrajectoryPaths(
+                input_run=input_run,
+                output_run=output_sweep / input_run.name,
+                trajectory=trajectory,
+            )
 
 
-def make_missing_npzs(run_dir: Path, traj: Path, stages: set[str], overwrite: bool, config: dict):
-    """Generate requested molecular-contact archives."""
-    from src.pairing import compute_filtered_nlist_base_pairs_traj, make_molecule_lookup_table
-    from src.molecule_graph import build_molecule_contact_edge_dict_from_pairing_npz
+def generate_pairing(
+    paths: TrajectoryPaths, config: dict[str, Any], overwrite: bool
+) -> bool:
+    """Compute missing particle-pair NPZ and molecule lookup files."""
+    if not overwrite:
+        try:
+            pairing_inputs(paths)
+            return False
+        except FileNotFoundError:
+            pass
+
     import gsd.hoomd
+    from src.pairing import (
+        compute_filtered_nlist_base_pairs_traj,
+        make_molecule_lookup_table,
+    )
 
-    stem = traj.stem
-    pairing_dir = run_dir / "computed_metrics" / "pairing"
-    graph_dir = run_dir / "computed_metrics" / "mol_graph"
-    intra_dir = run_dir / "computed_metrics" / "intramol_graph"
-    pairing_path = pairing_dir / f"{stem}_pairing.npz"
-    lookup_path = pairing_dir / "molecule_lookup.npy"
-    graph_path = graph_dir / f"{stem}_molecule_contact_edges.npz"
-    intra_path = intra_dir / f"{stem}_intra_molecule_contacts.npz"
+    params = load_params_json(paths.input_run / "params.json")
+    r_opt = (float(params["r_att_base"]) + float(params["r_rep_base"])) / 2.0
 
-    if "pairing" in stages and (overwrite or not pairing_path.is_file() or not lookup_path.is_file()):
-        params = load_params_json(run_dir / "params.json")
-        r_opt = (float(params["r_att_base"]) + float(params["r_rep_base"])) / 2
-        with gsd.hoomd.open(str(traj), "r") as gsd:
-            data = compute_filtered_nlist_base_pairs_traj(
-                traj=gsd, r_min=float(config['r_min']), r_max=float(config['r_max']),
-                exclude_chain=int(config['exclude_chain']),
-                stride=int(config['stride']), r_opt=r_opt)
-            mol_id = make_molecule_lookup_table(gsd[0])
-        pairing_dir.mkdir(parents=True, exist_ok=True)
-        if overwrite or not pairing_path.is_file():
-            np.savez(pairing_path, **data)
-        if overwrite or not lookup_path.is_file():
-            np.save(lookup_path, mol_id)
-    if "graphs" in stages and config["experiment"] != "single_chain" and (overwrite or not graph_path.is_file()):
-        if not pairing_path.exists() or not lookup_path.exists():
-            raise FileNotFoundError(f"Pairing inputs missing for {traj}; run --stage pairing first")
-        with np.load(pairing_path) as pairing:
-            graph_data = build_molecule_contact_edge_dict_from_pairing_npz(
-                pairing, np.load(lookup_path))
-        graph_dir.mkdir(parents=True, exist_ok=True)
-        np.savez(graph_path, **graph_data)
-    if "graphs" in stages and config["experiment"] == "mixture" and (overwrite or not intra_path.is_file()):
-        if not pairing_path.exists() or not lookup_path.exists():
-            raise FileNotFoundError(f"Intramolecular inputs missing for {traj}")
-        from collections import Counter
-        lookup = np.load(lookup_path)
-        f_out, m_out, n_out = [], [], []
-        with np.load(pairing_path) as pairing:
-            frames = pairing["frame_indices"].astype(int)
-            for frame in frames:
-                seen = set()
-                counts = Counter()
-                for i,j in zip(pairing[f"qi_{frame}"], pairing[f"pi_{frame}"]):
-                    i,j=int(i),int(j)
-                    if i==j or lookup[i]!=lookup[j]:
-                        continue
-                    p=(min(i,j), max(i,j))
-                    if p in seen:
-                        continue
-                    seen.add(p)
-                    counts[int(lookup[i])] += 1
-                for mol, count in counts.items():
-                    f_out.append(frame); m_out.append(mol); n_out.append(count)
-        intra_dir.mkdir(parents=True, exist_ok=True)
-        np.savez(intra_path, frame=np.array(f_out,dtype=np.int64),
-                 mol_id=np.array(m_out,dtype=np.int64),
-                 n_intra_contacts=np.array(n_out,dtype=np.int64),
-                 frame_indices=np.array(frames,dtype=np.int64),
-                 n_molecules=np.array([len(molecule_lengths(lookup))],dtype=np.int64))
+    with gsd.hoomd.open(str(paths.trajectory), "r") as traj:
+        pairs = compute_filtered_nlist_base_pairs_traj(
+            traj=traj,
+            r_min=float(config["r_min"]),
+            r_max=float(config["r_max"]),
+            exclude_chain=int(config["exclude_chain"]),
+            stride=int(config["stride"]),
+            r_opt=r_opt,
+        )
+        lookup = make_molecule_lookup_table(traj[0])
+
+    output_pairing = archive_path(paths.output_run, "pairing", paths.stem)
+    output_lookup = archive_path(paths.output_run, "lookup", paths.stem)
+    output_pairing.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(output_pairing, **pairs)
+    np.save(output_lookup, lookup)
+    return True
 
 
-def analyze_trajectory(run_dir: Path, traj: Path, config: dict, sweep: Path):
-    experiment = config["experiment"]
-    stem = traj.stem
-    pairing_path = run_dir / "computed_metrics" / "pairing" / f"{stem}_pairing.npz"
-    lookup_path = run_dir / "computed_metrics" / "pairing" / "molecule_lookup.npy"
-    graph_path = run_dir / "computed_metrics" / "mol_graph" / f"{stem}_molecule_contact_edges.npz"
-    intra_path = run_dir / "computed_metrics" / "intramol_graph" / f"{stem}_intra_molecule_contacts.npz"
-    if not pairing_path.is_file() or not lookup_path.is_file():
-        raise FileNotFoundError(f"Missing precomputed pairing inputs: {pairing_path}")
-    lengths = molecule_lengths(np.load(lookup_path))
+def generate_graphs(
+    paths: TrajectoryPaths, config: dict[str, Any], overwrite: bool
+) -> None:
+    """Generate molecular-contact archives from particle-pairing archives."""
+    if config["experiment"] == "single_chain":
+        return
+
+    from src.molecule_graph import (
+        build_molecule_contact_edge_dict_from_pairing_npz,
+        build_molecule_intra_contact_dict_from_pairing_npz,
+    )
+
+    want_graph = overwrite or find_archive(paths, "graph") is None
+    want_intra = (
+        config["experiment"] == "mixture"
+        and (overwrite or find_archive(paths, "intramol") is None)
+    )
+    if not want_graph and not want_intra:
+        return
+
+    pairing_path, lookup_path = pairing_inputs(paths)
     lookup = np.load(lookup_path)
+    with np.load(pairing_path) as pairing:
+        if want_graph:
+            graph_data = build_molecule_contact_edge_dict_from_pairing_npz(
+                pairing, lookup
+            )
+            graph_path = archive_path(paths.output_run, "graph", paths.stem)
+            graph_path.parent.mkdir(parents=True, exist_ok=True)
+            np.savez(graph_path, **graph_data)
+
+        if want_intra:
+            intra_data = build_molecule_intra_contact_dict_from_pairing_npz(
+                pairing, lookup
+            )
+            intra_path = archive_path(paths.output_run, "intramol", paths.stem)
+            intra_path.parent.mkdir(parents=True, exist_ok=True)
+            np.savez(intra_path, **intra_data)
+
+
+def metadata(paths: TrajectoryPaths) -> dict[str, Any]:
+    """Simulation parameters and unambiguous replicate identifiers."""
+    params = load_params_json(paths.input_run / "params.json")
+    run_number = paths.input_run.name.split("_", 1)[0]
+    trajectory_id = paths.stem.replace("trajectory_", "traj_")
+    return {
+        "run_id": f"{run_number}__{trajectory_id}",
+        "folder_name": paths.input_run.name,
+        "traj_replicate": paths.stem,
+        "E_att": params.get("E_att"),
+        "angle_k_ppp": params.get("angle_k_ppp"),
+        "density": params.get("density"),
+        "molecule_file": params.get("molecule_file"),
+    }
+
+
+def summarize_table(
+    framewise: pd.DataFrame,
+    fraction: float,
+    group_columns: list[str],
+) -> pd.DataFrame:
+    """Average numerical columns over the last fraction of sampled frames."""
+    if framewise.empty:
+        return framewise
+    frames = np.sort(framewise["frame"].unique())
+    n_keep = max(1, int(np.ceil(len(frames) * fraction)))
+    selected = framewise[framewise["frame"].isin(frames[-n_keep:])]
+    numeric = [
+        name
+        for name in selected.select_dtypes(include="number").columns
+        if name not in {"frame", *group_columns}
+    ]
+    if not numeric:
+        return selected[group_columns].drop_duplicates().reset_index(drop=True)
+    return (
+        selected.groupby(group_columns, as_index=False, dropna=False)[numeric]
+        .mean()
+    )
+
+
+def analyze_trajectory(
+    paths: TrajectoryPaths, input_sweep: Path, config: dict[str, Any]
+) -> AnalysisResult:
+    """Analyze a replicate using cached pairing and molecular-contact arrays."""
+    experiment = str(config["experiment"])
     fraction = float(config["late_fraction"])
     min_contacts = int(config["min_contacts"])
-    window = int(config.get("recurrence_window", 20))
+    window = int(config["recurrence_window"])
+
+    pairing_path, lookup_path = pairing_inputs(paths)
+    lookup = np.load(lookup_path)
+    lengths = molecule_lengths(lookup)
 
     with np.load(pairing_path) as pairing:
-        contacts = contact_frame_rows(
-            pairing, lookup,
-            particle_recurrence=experiment=="length_patterning",
-            recurrence_window=window)
-        if experiment=="single_chain":
-            reference_path = Path(config["viennarna_reference_file"])
-            if not reference_path.is_absolute():
-                reference_path = sweep / reference_path
-            if not reference_path.is_file():
-                raise FileNotFoundError(
-                    f"ViennaRNA reference CSV not found: {reference_path}. "
-                    "Set viennarna_reference_file in the single-chain config "
-                    "or pass --viennarna-reference."
-                )
+        framewise = contact_frame_rows(
+            pairing,
+            lookup,
+            particle_recurrence=experiment == "length_patterning",
+            recurrence_window=window,
+        )
+        bins = pd.DataFrame()
+        extra_tables: dict[str, pd.DataFrame] = {}
+
+        if experiment == "single_chain":
+            reference = Path(config["viennarna_reference_file"])
+            if not reference.is_absolute():
+                reference = input_sweep / reference
+            if not reference.is_file():
+                raise FileNotFoundError(f"ViennaRNA reference not found: {reference}")
             mfe = single_chain_framewise(
                 pairing,
-                mfe_pairs_from_csv(reference_path),
-                int(config.get("pair_index_offset", 1)),
+                mfe_pairs_from_csv(reference),
+                int(config["pair_index_offset"]),
             )
-            frame = contacts.merge(mfe,on="frame",how="left")
-            frame = add_gsd_geometry(
-                frame, traj, nm_per_sim_length_unit=float(config["rg"]["nm_per_sim_length_unit"])
+            framewise = framewise.merge(mfe, on="frame", how="left")
+            framewise = add_gsd_geometry(
+                framewise,
+                paths.trajectory,
+                nm_per_sim_length_unit=float(
+                    config["rg"]["nm_per_sim_length_unit"]
+                ),
             )
-            bins = pd.DataFrame()
-            ranked = pd.DataFrame()
-            extras = {}
         else:
-            if not graph_path.is_file():
-                raise FileNotFoundError(f"Missing precomputed graph NPZ: {graph_path}")
-            with np.load(graph_path) as edges:
-                species = identify_species(lengths,
-                    {int(k):v for k,v in config["species_by_length"].items()}) if experiment=="mixture" else None
-                graph,bins,ranked = component_frame_rows(
-                    edge_frames(edges),lengths,min_contacts,window,
-                    with_recurrence=(experiment=="reentrance"),
-                    with_bins=True,with_ranks=experiment=="length_patterning")
-                frame = contacts.merge(graph,on="frame",how="inner")
-                extras={}
-                if experiment=="mixture":
-                    if not intra_path.exists():
-                        raise FileNotFoundError(f"Mixture requires existing intra NPZ {intra_path}")
+            graph_path = find_archive(paths, "graph")
+            if graph_path is None:
+                raise FileNotFoundError(
+                    f"Molecular-contact NPZ missing for {paths.trajectory}"
+                )
+            with np.load(graph_path) as graph:
+                graph_frames, bins, ranked_frames = component_frame_rows(
+                    edge_frames(graph),
+                    lengths,
+                    min_contacts=min_contacts,
+                    recurrence_window=window,
+                    with_recurrence=experiment == "reentrance",
+                    with_bins=True,
+                    with_ranks=experiment == "length_patterning",
+                )
+                framewise = framewise.merge(graph_frames, on="frame", how="inner")
+
+                if experiment == "length_patterning":
+                    extra_tables["ranked_clusters"] = summarize_table(
+                        ranked_frames, fraction, ["rank"]
+                    )
+                elif experiment == "mixture":
+                    species = identify_species(
+                        lengths,
+                        {
+                            int(length): name
+                            for length, name in config["species_by_length"].items()
+                        },
+                    )
+                    intra_path = find_archive(paths, "intramol")
+                    if intra_path is None:
+                        raise FileNotFoundError(
+                            f"Intramolecular-contact NPZ missing for {paths.trajectory}"
+                        )
                     with np.load(intra_path) as intra:
-                        ranks,types,largest = mixture_cluster_rows(edges,lengths,species,min_contacts,intra)
-                    extras={"ranked_clusters":ranks,"cluster_contacts":types,"largest_cluster":largest}
-    params = load_params_json(run_dir/"params.json")
-    run_id = run_dir.name.split("_",1)[0] + "__" + stem.replace("trajectory_","traj_")
-    meta={"run_id":run_id,"folder_name":run_dir.name,"traj_replicate":stem,
-          "E_att":params.get("E_att"),"angle_k_ppp":params.get("angle_k_ppp"),
-          "density":params.get("density"),"molecule_file":params.get("molecule_file")}
-    for df in [frame,bins,ranked,*extras.values()]:
-        if not df.empty:
-            for key,value in meta.items():
-                df[key]=value
-    if "step" not in frame:
+                        ranks, contacts, largest = mixture_cluster_rows(
+                            graph, lengths, species, min_contacts, intra
+                        )
+                    extra_tables = {
+                        "ranked_clusters": summarize_table(
+                            ranks, fraction, ["rank", "species"]
+                        ),
+                        "cluster_contacts": summarize_table(
+                            contacts, fraction, ["type"]
+                        ),
+                        "largest_cluster": summarize_table(
+                            largest, fraction, []
+                        ),
+                    }
+
+    if "step" not in framewise:
         import gsd.hoomd
-        with gsd.hoomd.open(str(traj),"r") as gsd:
-            frame["step"]=[int(gsd[int(f)].configuration.step) for f in frame.frame]
-    metric_names = [c for c in frame if c in (
-        "n_base_pairs","n_inter_contacts","n_intra_contacts","n_edges",
-        "mean_edge_weight","mean_degree","molecule_recurrence",
-        "particle_recurrence","mfe_matches","extra_pairs","precision","recall","Rg_nm")]
-    summary = {**meta,"late_fraction":fraction,**summarize_numeric(frame,fraction,metric_names)}
-    bin_summary = summarize_bin_frames(bins,fraction) if not bins.empty else pd.DataFrame()
-    if not bin_summary.empty:
-        for key,value in meta.items():
-            bin_summary[key]=value
-    for name,df in extras.items():
-        if not df.empty:
-            frames=sorted(df.frame.unique())
-            keep=max(1,int(np.ceil(len(frames)*fraction)))
-            extras[name]=df[df.frame.isin(frames[-keep:])]
-    return frame,bin_summary,summary,extras,ranked
 
+        with gsd.hoomd.open(str(paths.trajectory), "r") as traj:
+            framewise["step"] = [
+                int(traj[int(frame)].configuration.step)
+                for frame in framewise["frame"]
+            ]
 
-def write_results(sweep: Path, outputs: list[tuple], save_framewise: bool,
-                  run_ids: list[str] | None = None):
-    target=sweep/"analysis"
-    if run_ids:
-        target=target/"selected_runs"/("_".join(sorted(run_ids)))
-    target.mkdir(parents=True, exist_ok=True)
-    frames, binned, summary, extras, ranks = zip(*outputs)
-    pd.DataFrame(summary).to_csv(target/"replicate_summary.csv",index=False)
-    if any(not x.empty for x in binned):
-        pd.concat([x for x in binned if not x.empty],ignore_index=True).to_csv(
-            target/"cluster_distribution.csv",index=False)
-    for name in ("ranked_clusters","cluster_contacts","largest_cluster"):
-        tables=[x[name] for x in extras if name in x and not x[name].empty]
-        if tables:
-            pd.concat(tables,ignore_index=True).to_csv(target/f"{name}.csv",index=False)
-    if save_framewise and any(not x.empty for x in ranks):
-        pd.concat([x for x in ranks if not x.empty], ignore_index=True).to_csv(
-            target / "ranked_clusters_framewise.csv", index=False
+    info = metadata(paths)
+    for key, value in info.items():
+        framewise[key] = value
+
+    metric_columns = [
+        name for name in (
+            "n_base_pairs", "n_intra_contacts", "n_inter_contacts", "n_edges",
+            "mean_edge_weight", "mean_degree", "molecule_recurrence",
+            "particle_recurrence", "mfe_matches", "extra_pairs",
+            "precision", "recall", "Rg_nm",
         )
-    if save_framewise:
-        folder=target/"framewise"; folder.mkdir(exist_ok=True)
-        for df in frames:
-            if not df.empty:
-                df.to_csv(folder/f"{df.iloc[0]['run_id']}.csv",index=False)
+        if name in framewise
+    ]
+    summary = {
+        **info,
+        "late_fraction": fraction,
+        **summarize_numeric(framewise, fraction, metric_columns),
+    }
 
+    if not bins.empty:
+        bin_scheme = config["cluster_binning"]
+        bins = bins[bins["scheme"] == bin_scheme]
+        bins = summarize_bin_frames(bins, fraction)
+        for key, value in info.items():
+            bins[key] = value
 
-def main():
-    p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--sweep",type=Path,required=True)
-    p.add_argument("--experiment",choices=["single_chain","reentrance","length_patterning","mixture"],required=True)
-    p.add_argument("--stage",choices=["pairing","graphs","analyze","all"],default="analyze")
-    p.add_argument("--run-ids",nargs="+",default=None)
-    p.add_argument("--overwrite-npz",action="store_true",help="Explicitly regenerate existing NPZ inputs")
-    p.add_argument("--save-framewise",action="store_true")
-    p.add_argument(
-        "--viennarna-reference",
-        type=Path,
-        help="ViennaRNA base-pair reference CSV (absolute path or relative to the sweep).",
+    for table in extra_tables.values():
+        if not table.empty:
+            for key, value in info.items():
+                table[key] = value
+
+    return AnalysisResult(
+        paths=paths,
+        framewise=framewise,
+        bins=bins,
+        summary=summary,
+        extra_tables=extra_tables,
     )
-    args=p.parse_args()
-    sweep=args.sweep.resolve()
-    if not sweep.is_dir():
-        p.error(f"Not a sweep directory: {sweep}")
-    config=yaml.safe_load((ANALYSIS_DIR/"configs"/f"{args.experiment}.yaml").read_text())
+
+
+def write_results(
+    output_sweep: Path,
+    results: list[AnalysisResult],
+    run_ids: list[str] | None,
+    save_framewise: bool,
+) -> Path:
+    """Write sweep summaries and optional run-level replicate time series."""
+    analysis_dir = output_sweep / "analysis"
+    if run_ids:
+        analysis_dir /= "selected_runs"
+        analysis_dir /= "_".join(sorted(set(run_ids)))
+
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([result.summary for result in results]).to_csv(
+        analysis_dir / "replicate_summary.csv", index=False
+    )
+
+    bins = [result.bins for result in results if not result.bins.empty]
+    if bins:
+        pd.concat(bins, ignore_index=True).to_csv(
+            analysis_dir / "cluster_distribution.csv", index=False
+        )
+
+    for name in ("ranked_clusters", "cluster_contacts", "largest_cluster"):
+        tables = [
+            result.extra_tables[name]
+            for result in results
+            if name in result.extra_tables and not result.extra_tables[name].empty
+        ]
+        if tables:
+            pd.concat(tables, ignore_index=True).to_csv(
+                analysis_dir / f"{name}.csv", index=False
+            )
+
+    if save_framewise:
+        for result in results:
+            output = result.paths.output_run / "framewise" / f"{result.paths.stem}.csv"
+            output.parent.mkdir(parents=True, exist_ok=True)
+            result.framewise.to_csv(output, index=False)
+
+    return analysis_dir
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--sweep", type=Path, required=True, help="Input sweep directory")
+    parser.add_argument(
+        "--output-root", type=Path, required=True,
+        help="Destination root; the sweep name is appended automatically",
+    )
+    parser.add_argument(
+        "--experiment",
+        choices=("single_chain", "reentrance", "length_patterning", "mixture"),
+        required=True,
+    )
+    parser.add_argument(
+        "--stage", choices=("pairing", "graphs", "analyze", "all"),
+        default="analyze",
+    )
+    parser.add_argument("--run-ids", nargs="+", default=None)
+    parser.add_argument("--overwrite-npz", action="store_true")
+    parser.add_argument("--save-framewise", action="store_true")
+    parser.add_argument(
+        "--viennarna-reference", type=Path,
+        help="ViennaRNA reference CSV, absolute or relative to the input sweep",
+    )
+    args = parser.parse_args()
+
+    input_sweep = args.sweep.expanduser().resolve()
+    if not input_sweep.is_dir():
+        parser.error(f"Input sweep not found: {input_sweep}")
+
+    output_root = args.output_root.expanduser().resolve()
+    output_sweep = output_root / input_sweep.name
+    if output_sweep == input_sweep or input_sweep in output_sweep.parents:
+        parser.error("The output sweep must not be inside the input sweep")
+
+    config_path = ANALYSIS_DIR / "configs" / f"{args.experiment}.yaml"
+    config: dict[str, Any] = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     if args.viennarna_reference is not None:
         if args.experiment != "single_chain":
-            p.error("--viennarna-reference is only valid for single_chain")
+            parser.error("--viennarna-reference requires --experiment single_chain")
         config["viennarna_reference_file"] = str(args.viennarna_reference)
-    stages=set()
-    if args.stage in ("pairing","all"): stages.add("pairing")
-    if args.stage in ("graphs","all"): stages.add("graphs")
-    results=[]
-    for run_dir in run_directories(sweep,args.run_ids):
-        for traj in sorted(run_dir.glob("trajectory_*.gsd")):
-            if stages:
-                make_missing_npzs(run_dir,traj,stages,args.overwrite_npz,config)
-            if args.stage in ("analyze","all"):
-                print(f"Analyzing {run_dir.name}/{traj.name}",flush=True)
-                results.append(analyze_trajectory(run_dir,traj,config,sweep))
+
+    trajectories = list(iter_trajectories(input_sweep, output_sweep, args.run_ids))
+    if not trajectories:
+        parser.error("No matching trajectory_*.gsd files found in the input sweep")
+
+    results: list[AnalysisResult] = []
+    for paths in trajectories:
+        print(f"{args.stage}: {paths.input_run.name}/{paths.trajectory.name}", flush=True)
+        pairing_changed = False
+        if args.stage in ("pairing", "all"):
+            pairing_changed = generate_pairing(paths, config, args.overwrite_npz)
+        if args.stage in ("graphs", "all"):
+            generate_graphs(paths, config, args.overwrite_npz or pairing_changed)
+        if args.stage in ("analyze", "all"):
+            results.append(analyze_trajectory(paths, input_sweep, config))
+
     if results:
-        write_results(sweep,results,args.save_framewise,args.run_ids)
-        print(f"Saved analysis summaries: {sweep/'analysis'}")
-    elif args.stage=="analyze":
-        raise RuntimeError("No trajectories were found to analyze")
+        destination = write_results(
+            output_sweep, results, args.run_ids, args.save_framewise
+        )
+        print(f"Saved analysis tables to {destination}")
+    else:
+        print(f"Generated archives, if needed, under {output_sweep}")
 
 
 if __name__ == "__main__":
