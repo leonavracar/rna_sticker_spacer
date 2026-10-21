@@ -137,7 +137,9 @@ def analyze_trajectory(run_dir: Path, traj: Path, config: dict, sweep: Path):
                 int(config.get("pair_index_offset", 1)),
             )
             frame = contacts.merge(mfe,on="frame",how="left")
-            frame = add_gsd_geometry(frame,traj,float(config.get("length_scale_nm",.6)))
+            frame = add_gsd_geometry(
+                frame, traj, nm_per_sim_length_unit=float(config["rg"]["nm_per_sim_length_unit"])
+            )
             bins = pd.DataFrame()
             ranked = pd.DataFrame()
             extras = {}
