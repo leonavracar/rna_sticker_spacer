@@ -1,4 +1,4 @@
-"""Single-chain RNA geometry and ViennaRNA MFE comparison from existing inputs."""
+"""Single-chain conformation and ViennaRNA secondary-structure comparison."""
 from __future__ import annotations
 import numpy as np
 import pandas as pd
@@ -27,7 +27,7 @@ def single_chain_framewise(pairing_npz, mfe_pairs: set[tuple[int,int]],
 
 
 def radius_of_gyration(frame, scale: float = .6) -> float:
-    """Unwrap periodic coordinates via stored GSD images, following legacy code."""
+    """Compute radius of gyration after unwrapping periodic coordinates."""
     import freud
     box = freud.box.Box.from_box(frame.configuration.box)
     positions = box.unwrap(frame.particles.position, frame.particles.image)
