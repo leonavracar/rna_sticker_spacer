@@ -59,11 +59,11 @@ def make_missing_npzs(run_dir: Path, traj: Path, stages: set[str], overwrite: bo
                 stride=int(config['stride']), r_opt=r_opt)
             mol_id = make_molecule_lookup_table(gsd[0])
         pairing_dir.mkdir(parents=True, exist_ok=True)
-            if overwrite or not pairing_path.is_file():
+        if overwrite or not pairing_path.is_file():
             np.savez(pairing_path, **data)
         if overwrite or not lookup_path.is_file():
             np.save(lookup_path, mol_id)
-    if "graphs" in stages and (overwrite or not graph_path.is_file()):
+    if "graphs" in stages and config["experiment"] != "single_chain" and (overwrite or not graph_path.is_file()):
         if not pairing_path.exists() or not lookup_path.exists():
             raise FileNotFoundError(f"Pairing inputs missing for {traj}; run --stage pairing first")
         with np.load(pairing_path) as pairing:
@@ -195,9 +195,10 @@ def write_results(sweep: Path, outputs: list[tuple], save_framewise: bool,
         tables=[x[name] for x in extras if name in x and not x[name].empty]
         if tables:
             pd.concat(tables,ignore_index=True).to_csv(target/f"{name}.csv",index=False)
-    if any(not x.empty for x in ranks):
-            pd.concat([x for x in ranks if not x.empty],ignore_index=True).to_csv(
-            target/"ranked_clusters_framewise.csv",index=False)
+    if save_framewise and any(not x.empty for x in ranks):
+        pd.concat([x for x in ranks if not x.empty], ignore_index=True).to_csv(
+            target / "ranked_clusters_framewise.csv", index=False
+        )
     if save_framewise:
         folder=target/"framewise"; folder.mkdir(exist_ok=True)
         for df in frames:
