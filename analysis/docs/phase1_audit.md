@@ -73,7 +73,7 @@ These entries are **not deletion instructions**. `REQUIRED` was explicitly reque
 | Area | Candidate metrics or outputs | Draft decision | Notes |
 |---|---|---|---|
 | Pairing | Complementary contact counts; inter-/intramolecular pairing; filtering/valency ambiguity rate | PROPOSED KEEP | Foundational inputs for other stages |
-| Clustering | Component/cluster size distribution, largest cluster, monomer and multimolecule material fractions | PROPOSED KEEP | Prefer normalized measures; document molecule vs particle weights |
+| Clustering | Cluster-size distributions using absolute number of molecules and relative percentage of the system | **REQUIRED** | Drop separate mono/oligo/drop fractions; retain monomer as a valid distribution bin |
 | Graph | Edge count/density, mean degree, contact/edge strength mean and q90 | PROPOSED KEEP | Distinguish raw contacts from edges passing the threshold |
 | Mixtures | Species-resolved recruitment, mixed/pure components, homotypic/heterotypic contacts | PROPOSED KEEP | Generic metadata rather than `cag10` and `cag47` hard-coded |
 | Mixtures (advanced) | Cluster-resolved species composition, site-normalized contact saturation | DECIDE | Valuable but specialized and currently extensive |
@@ -81,7 +81,7 @@ These entries are **not deletion instructions**. `REQUIRED` was explicitly reque
 | Dynamics | Pair contact recurrence/persistence across windows, cluster persistence | DECIDE | Preserve if used to support claims/plots |
 | Thermodynamics | Potential, bonded/angle, SQD and kinetic energy traces | DECIDE | At least useful as diagnostics; may not need heavy summary exports |
 | Concentration | Density/box-derived concentrations and unit conversion | DECIDE | Useful contextual metadata if conversion assumptions documented |
-| Cluster binning | Mono/di/tri, fixed count bins; particle-fraction bins | DECIDE | Bins should live in config, not hidden in plotting code |
+| Cluster binning | Absolute size bins and relative-percentage bins | **REQUIRED** | Bins are configurable; explicitly distinguish molecule fraction from particle/material fraction in mixtures |
 | Transitions | Smoothed feature-change scores and peak detection | DECIDE | Appears exploratory; no demonstrated requirement yet |
 | Statistical comparison | Replicate aggregation and permutation tests/adjusted p-values | PROPOSED KEEP | Locate authoritative thesis implementation before migration |
 | Geometry extras | Old three-bead-style dihedrals/stacking/inversion | TENTATIVE ARCHIVE | Not obviously part of present one-particle/base model |
@@ -96,7 +96,7 @@ These entries are **not deletion instructions**. `REQUIRED` was explicitly reque
 | Radial distribution function g(r) | PROPOSED KEEP | Existing diagnostic functions |
 | Cluster-size distributions and stacked-bin summaries | PROPOSED KEEP | Existing plot/analysis scripts |
 | Time-series, replicate variation, error bars, phase-like/reentrance figures | PROPOSED KEEP | Refactor plotting and transforms in `plots_ps.py` |
-| Interactive network/cluster graphs with **PyVis** | **CAPTURE SOURCE / PLAN TO KEEP** | User reports code in notebooks not yet present; do not invent or recreate exact appearance |
+| Interactive network/cluster graphs with **PyVis** | **REQUIRED** | Source inspected in user-provided `8_directed_graph_2.ipynb` (not yet committed): two overlapping implementations; preserve both styling presets and extract reusable library function |
 | Interactive/animated trajectory visualization (Plotly etc.) | DECIDE | `visualisation.py` is substantial; curate based on actual output |
 | Unpublished recent notebook plots and analyses | **CAPTURE SOURCE** | Must inspect before migration; no deletion decision yet |
 
@@ -142,3 +142,58 @@ These entries are **not deletion instructions**. `REQUIRED` was explicitly reque
 5. Which representative historical sweep(s) can supply a small baseline for numerical regression tests?
 
 **Until these are answered:** retain all original sources; do not delete analytical functions or change scientific definitions.
+
+## Confirmed decisions and uploaded artifacts — 2026-10-21
+
+**Decisions from researcher**
+- **Remove standalone** `mono_frac`, `oligo_frac`, `drop_frac` and their seven-statistic replicate summaries from the *new output specification*. Do not delete the original computations until comparison tests pass.
+- Keep cluster size distributions, expressed either as **number of RNA molecules per component** or **size as a percentage of the total molecule population**, making differences in total chain count comparable across repeat-length systems. Still allow the monomer category (`cluster_size == 1`) inside distributions.
+- For mixed lengths, distinguish molecule-fraction and particle/material-fraction denominators (they are not interchangeable). Decide which one is used as a plot-axis definition per research question, and clearly label it.
+- Rewrite figure-generating notebooks to **import tested calculation and plotting functions**. Notebooks should retain experiment selection, presentation, scientific interpretation, and light exploratory code. No copied complex implementations.
+- Retain **XY/XZ/YZ projections**, including parameter-grid plots, and retain **interactive PyVis networks** in the visualization scope.
+- Reduce the number of exported metrics and redundant summary statistics; avoid exporting everything automatically.
+- Reentrance is the first concrete dataset, not a universal schema for single-chain, repeat-length, or mixture experiments.
+
+### New source material examined (uploaded; not committed to GitHub)
+
+**`8_directed_graph_2.ipynb`:**
+- 16 notebook cells; two near-duplicate large PyVis function implementations (`make_pyvis_molecule_graph`), followed by differing settings, including a version showing edge weights and a fixed HTML overlay of mean degree / edge count.
+- Uses `networkx.Graph()` (undirected), not `DiGraph`. Molecular contact symmetry suggests retaining an undirected network unless a separate directional meaning is defined.
+- Constructs nodes for all molecules, colors by connected-component size, sizes by degree, weights edges by particle contact count, and offers labels, tooltips, interactive physics, and optional physics freeze.
+- Notebook currently includes cluster-local paths, wildcard imports, an explicitly selected frame 3999, and a prefilter at `min_contacts=2` followed by a second call at threshold 1. The new graph API should apply a single explicit threshold.
+- **Migration:** one library function for graph construction (shared with numerical analyses) and one optional PyVis renderer (`plotting/networks.py`); a short example notebook imports them. Preserve styling presets, optional edge labels, summary overlay, and downloadable HTML.
+- HTML rendering has not yet been visually validated in a browser; source code was reviewed.
+
+**`analysis_per_replicate.csv`:**
+- 480 rows and 95 columns; 8 attraction strengths × 3 angle stiffness values × 2 densities × 10 replicates. All are `cag47x100.json`.
+- 77 columns arise from 11 `inst_*` metrics each expanded to last/mean/std/min/max/late_mean/late_std.
+- 21 of those 77 are the now-rejected three-way mono/oligo/drop categories. This is a concrete example of unhelpful width.
+- Use **one final-window mean per necessary metric per replicate** as the default analytical output. Use the framewise source to recover dynamics, maxima, etc., and compute between-replicate mean/variance at condition level. Additional statistics belong to explicit, opt-in requests.
+- Record the final-window fraction (currently `fraction_last=0.1`) and parameters as metadata rather than repeating every possible derived/constant field in every table.
+
+**`analysis_cluster_binned.csv`:**
+- 1,920,000 framewise data rows, 27 columns.
+- Contains `mol_*` categories (absolute sizes), `pct_*` categories (currently based on `one_cluster_particle_frac`) and `mol_sum`/`pct_sum` validation columns.
+- **Important semantic distinction:** for equal-length chains, molecule count fraction and particle fraction per component coincide; for mixtures they diverge. The proposed relative-length comparison should explicitly define the size measure as `cluster_size_molecules / n_molecules_total`; optionally also export particle material fractions for mixture analyses. Do not silently relabel existing `pct_*` values without checking meaning.
+- Store an optional long, detailed framewise table for debugging / advanced analysis, but make late-window **per-replicate binned distributions** the plotting-ready default. A compressed columnar format may be preferable for millions of frame rows, with CSV export as needed.
+- `mol_sum` and `pct_sum` should be validation checks in the pipeline/tests, not necessarily permanently exported columns.
+
+**`molecule_lookup.npy`, `trajectory_0_molecule_contact_edges.npz`, `trajectory_0_pairing.npz`:**
+- User supplied representative intermediate inputs, suitable for fixture/regression development after checking their contents and source-run metadata. These binary payloads have not yet been decoded or numerically validated in this audit.
+- Do not commit real large simulation data to Git; create a small synthetic or sampled fixture later.
+
+### Proposed output tiers
+
+1. **Intermediate / cache:** pairing NPZ, molecule mapping, weighted contact-edge NPZ; provenance attached. No automatic human-facing wide CSV.
+2. **Detailed optional:** framewise graph/contact/cluster distributions and time series; useful for diagnostics and reproducing particular figures; may be large.
+3. **Plotting-ready default:** per-replicate binned cluster distribution by absolute and relative size; *selected* per-replicate metrics averaged over final 10%; separate condition-level uncertainty across replicates.
+4. **Domain extensions:** explicit mixture-specific composition/recruitment, optional detailed cluster resolution, single-chain validation, and separate equilibration diagnostics. Do not force all fields into a universal 95-column CSV.
+5. **Visual artifacts:** authored/curated notebook panels, PNG/PDF figure export, optional interactive PyVis HTML.
+
+### Open issues for researcher (prioritized)
+
+- Beyond cluster-size distributions, which **few scalar metrics** must be shown for reentrance: e.g. largest-cluster fraction, contact-graph degree/density, contact strength? This is a scientific decision; default exports should not dictate it.
+- Do we keep contact recurrence/persistence, and are kinetic/potential energy outputs required as *diagnostics only*?
+- For % cluster size plots, confirm whether the requested denominator is all molecules (length comparison) and whether particle material fraction is additionally desired for mixtures.
+- Which other RQ-specific figures deserve first-class generation: homogeneous reentrance, length sweep, scrambled control, single-chain validation, and CAG10+CAG47 mixture?
+- Inspect remaining notebook sources and verify generated PyVis HTML visually before settling style/API.
