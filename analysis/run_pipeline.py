@@ -211,6 +211,8 @@ def main():
     p.add_argument("--overwrite-npz",action="store_true",help="Explicitly regenerate existing NPZ inputs")
     p.add_argument("--save-framewise",action="store_true")
     args=p.parse_args()
+    if args.run_ids and args.stage in ("analyze", "all"):
+        p.error("--run-ids is supported for pairing and graphs only; full analysis writes sweep-level CSVs")
     sweep=args.sweep.resolve()
     if not sweep.is_dir():
         p.error(f"Not a sweep directory: {sweep}")
@@ -227,8 +229,6 @@ def main():
                 print(f"Analyzing {run_dir.name}/{traj.name}",flush=True)
                 results.append(analyze_trajectory(run_dir,traj,config,sweep))
     if results:
-        if args.run_ids:
-            p.error("Selected-run analysis cannot overwrite full-sweep summary files. Run without --run-ids for analysis.")
         write_results(sweep,results,args.save_framewise)
         print(f"Saved analysis summaries: {sweep/'analysis'}")
     elif args.stage=="analyze":
