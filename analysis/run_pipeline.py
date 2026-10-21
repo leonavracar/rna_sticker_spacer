@@ -75,12 +75,19 @@ def archive_path(run_dir: Path, kind: str, stem: str) -> Path:
 
 
 def find_archive(paths: TrajectoryPaths, kind: str) -> Path | None:
-    """Prefer a generated archive, otherwise reuse the original sweep's archive."""
-    for run_dir in (paths.output_run, paths.input_run):
-        candidate = archive_path(run_dir, kind, paths.stem)
-        if candidate.is_file():
-            return candidate
-    return None
+    """Locate a cached archive without mixing incompatible pairing generations."""
+    output = archive_path(paths.output_run, kind, paths.stem)
+    if output.is_file():
+        return output
+
+    # New pairing arrays require molecular-contact archives derived from them.
+    output_pairing = archive_path(paths.output_run, "pairing", paths.stem)
+    output_lookup = archive_path(paths.output_run, "lookup", paths.stem)
+    if kind in {"graph", "intramol"} and output_pairing.is_file() and output_lookup.is_file():
+        return None
+
+    source = archive_path(paths.input_run, kind, paths.stem)
+    return source if source.is_file() else None
 
 
 def pairing_inputs(paths: TrajectoryPaths) -> tuple[Path, Path]:
