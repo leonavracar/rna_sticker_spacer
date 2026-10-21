@@ -18,7 +18,7 @@ def identify_species(lengths: np.ndarray, labels_by_length: dict[int, str]) -> n
 
 
 def intramolecular_frames(intra_npz) -> dict[int, dict[int, int]]:
-    """Read the existing sparse per-molecule intramolecular contact NPZ."""
+    """Index sparse intramolecular contact counts by frame and molecule."""
     frames = {int(f): {} for f in intra_npz["frame_indices"]}
     for f, mol, n in zip(intra_npz["frame"], intra_npz["mol_id"],
                          intra_npz["n_intra_contacts"]):
@@ -28,12 +28,7 @@ def intramolecular_frames(intra_npz) -> dict[int, dict[int, int]]:
 
 def mixture_cluster_rows(edge_npz, lengths: np.ndarray, species: np.ndarray,
                          min_contacts: int = 2, intra_npz=None):
-    """Compact long-format ranked material and largest-component contact data.
-
-    Contact type counts include accepted inter-particle contacts between nodes
-    in the largest component, including weights below graph edge threshold,
-    consistent with the distinction between bonding and graph connectivity.
-    """
+    """Return ranked material, contact composition and largest-component summaries."""
     lengths = np.asarray(lengths, dtype=int)
     species = np.asarray(species, dtype=str)
     if len(lengths) != len(species):
