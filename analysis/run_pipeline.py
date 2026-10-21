@@ -357,6 +357,7 @@ def analyze_trajectory(
     summary = {
         **info,
         "late_fraction": fraction,
+        "min_contacts": min_contacts,
         **summarize_numeric(framewise, fraction, metric_columns),
     }
 
@@ -364,11 +365,15 @@ def analyze_trajectory(
         bin_scheme = config["cluster_binning"]
         bins = bins[bins["scheme"] == bin_scheme]
         bins = summarize_bin_frames(bins, fraction)
+        bins["late_fraction"] = fraction
+        bins["min_contacts"] = min_contacts
         for key, value in info.items():
             bins[key] = value
 
     for table in extra_tables.values():
         if not table.empty:
+            table["late_fraction"] = fraction
+            table["min_contacts"] = min_contacts
             for key, value in info.items():
                 table[key] = value
 
