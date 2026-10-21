@@ -1,7 +1,7 @@
-import numpy as np
-from collections import Counter
+"""Create weighted molecule-contact edges from filtered particle pairs."""
 
-# Rename: molecule graph NPZ → cdf cluster-size distribution
+from collections import Counter
+import numpy as np
 
 def count_molecule_contacts_from_array(qi: np.ndarray,
     pi: np.ndarray, molecule_id: np.ndarray) -> Counter[tuple[int, int]]:
@@ -12,93 +12,12 @@ def count_molecule_contacts_from_array(qi: np.ndarray,
         mol_j = molecule_id[j]
         if mol_i == mol_j:
             continue
-        # to avoid duplicates e.g. (1,2) and (2, 1) appearing as separate keys
         mol_a = min(mol_i, mol_j)
         mol_b = max(mol_i, mol_j)
 
         pair_counts[(mol_a, mol_b)] += 1
     return pair_counts
 
-def count_molecule_contacts_from_all_arrays(nlist_dict:dict[str,np.ndarray], molecule_id:np.ndarray ) -> dict[int, Counter[tuple[int,int]]]:
-    """Count intermolecular contacts for all saved frames in an array-based contact dictionary.
-
-    For each frame index stored in ``nlist_dict["frame_indices"]``, read
-    the particle-level contact arrays ``qi_<frame_idx>`` and ``pi_<frame_idx>``, maps
-    particle indices to molecule indices using ``molecule_id``, and counts how many
-    contacts occur between each distinct molecule pair in that frame.
-
-    Parameters
-    ----------
-    nlist_dict : dict[str, np.ndarray]
-        Dictionary containing saved per-frame particle contact arrays. Expected keys are:
-        ``"frame_indices"`` and, for each frame index ``f``, the arrays ``f"qi_{f}"``
-        and ``f"pi_{f}"``.
-    molecule_id : np.ndarray
-        Array mapping each particle index to its molecule index. Shape should be
-        ``(N_particles,)``.
-
-    Returns
-    -------
-    dict[int, Counter[tuple[int, int]]]
-        Dictionary mapping each frame index to a ``Counter`` of intermolecular contact
-        counts for that frame. Each ``Counter`` maps a molecule pair
-        ``(mol_a, mol_b)`` to the number of particle-level contacts observed between
-        those two molecules in that frame.
-        Example output:
-        {
-            0: Counter({(0, 4): 3, (2, 7): 1}),
-            10: Counter({(0, 4): 2}),
-        }
-
-    Notes
-    -----
-    This function does not apply any threshold on the number of contacts required for
-    a molecule pair to count as connected. 
-    
-    """
-    pair_counts_all_mols = {}
-    for frame_idx in nlist_dict["frame_indices"]:
-        frame_idx = int(frame_idx) # convert to python int from np int64
-        qi = nlist_dict[f"qi_{frame_idx}"] # get left-side pair particles
-        pi = nlist_dict[f"pi_{frame_idx}"] # get right-side pair particles
-        pair_counts = count_molecule_contacts_from_array(qi, pi, molecule_id)
-        pair_counts_all_mols[frame_idx] = pair_counts
-    return pair_counts_all_mols
-
-def filt_molecule_contacts_in_frame(pair_counts:Counter[tuple[int,int]], min_intermol_bonds:int = 2) -> set[tuple[int, int]]:
-    """Takes the pair_counts e.g. (0,4):1, (1,6): 3 and filters out the pairs that are < min_intermol_bonds"""
-    pairs_filtered = set()
-    for pair, count in pair_counts.items():
-        if count >= min_intermol_bonds:
-            pairs_filtered.add(pair)
-    return pairs_filtered
-
-
-def molecule_contact_set_from_pair_counts(
-    pair_counts: Counter[tuple[int, int]],
-    min_intermol_bonds: int = 1,
-) -> set[tuple[int, int]]:
-    """
-    Convert molecule-pair contact counts into a molecule-pair contact set.
-    """
-    return {
-        pair
-        for pair, count in pair_counts.items()
-        if count >= min_intermol_bonds
-    }
-
-def transform_and_filter_counter_to_dict(molecule_edges_counter: Counter, min_contacts: int = 1) -> dict:
-    """
-    Filters a molecule contact counter by removing pairs with < min_contacts and transforms counter to a dict.
-    *to be used on a single frame Counter
-    """
-    edge_dict = {}
-
-    for pair, count in molecule_edges_counter.items():
-        if count >= min_contacts:
-            edge_dict[(int(pair[0]), int(pair[1]))] = count
-
-    return edge_dict
 
 
 def molecule_contact_counter_to_edge_arrays(
