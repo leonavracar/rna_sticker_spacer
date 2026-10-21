@@ -19,6 +19,7 @@ import yaml
 ANALYSIS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(ANALYSIS_DIR))
 
+from src.concentration import concentrations_from_density
 from src.framewise import (
     component_frame_rows,
     contact_frame_rows,
@@ -200,21 +201,38 @@ def generate_graphs(
             np.savez(intra_path, **intra_data)
 
 
-def metadata(paths: TrajectoryPaths) -> dict[str, Any]:
-    """Simulation parameters and unambiguous replicate identifiers."""
+def metadata(
+    paths: TrajectoryPaths,
+    lengths: np.ndarray,
+    nm_per_sim_length_unit: float,
+) -> dict[str, Any]:
+    """Simulation parameters, replicate identifiers and physical concentrations."""
     params = load_params_json(paths.input_run / "params.json")
     run_number = paths.input_run.name.split("_", 1)[0]
     trajectory_id = paths.stem.replace("trajectory_", "traj_")
+    density = float(params["density"])
+    n_particles = int(lengths.sum())
+    n_molecules = int(len(lengths))
+
+    concentrations = concentrations_from_density(
+        density=density,
+        n_particles=n_particles,
+        n_molecules=n_molecules,
+        nm_per_sim_length_unit=nm_per_sim_length_unit,
+    )
     return {
         "run_id": f"{run_number}__{trajectory_id}",
         "folder_name": paths.input_run.name,
         "traj_replicate": paths.stem,
         "E_att": params.get("E_att"),
         "angle_k_ppp": params.get("angle_k_ppp"),
-        "density": params.get("density"),
+        "density": density,
         "molecule_file": params.get("molecule_file"),
+        "n_molecules": n_molecules,
+        "n_particles": n_particles,
+        "nm_per_sim_length_unit": nm_per_sim_length_unit,
+        **concentrations,
     }
-
 
 def summarize_table(
     framewise: pd.DataFrame,
@@ -277,9 +295,7 @@ def analyze_trajectory(
             framewise = add_gsd_geometry(
                 framewise,
                 paths.trajectory,
-                nm_per_sim_length_unit=float(
-                    config["rg"]["nm_per_sim_length_unit"]
-                ),
+                nm_per_sim_length_unit=float(config["nm_per_sim_length_unit"]),
             )
         else:
             graph_path = find_archive(paths, "graph")
@@ -341,7 +357,11 @@ def analyze_trajectory(
                 for frame in framewise["frame"]
             ]
 
-    info = metadata(paths)
+    info = metadata(
+        paths,
+        lengths,
+        nm_per_sim_length_unit=float(config["nm_per_sim_length_unit"]),
+    )
     for key, value in info.items():
         framewise[key] = value
 
