@@ -1,4 +1,4 @@
-"""Small per-replicate summaries: no seven-statistic column explosion."""
+"""Aggregate selected framewise observables over a late trajectory window."""
 from __future__ import annotations
 import pandas as pd
 from .framewise import summarize_numeric, summarize_bin_frames
