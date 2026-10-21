@@ -1,11 +1,6 @@
-"""Molecule connected components and particle-weighted cluster distributions.
-
-These operations consume molecule-edge arrays. They do *not* change the
-particle pairing or molecule-contact definitions used to generate NPZ files.
-"""
+"""Connected molecular components, cluster-size bins and ranked clusters."""
 from __future__ import annotations
 
-from collections import Counter
 from collections.abc import Iterable
 import numpy as np
 
@@ -82,7 +77,7 @@ def molecule_size_bin(size: int) -> str:
 
 
 def particle_size_bin(size: int, particle_fraction: float) -> str:
-    """Table 5 of the thesis: monomers always receive their own bin."""
+    """Assign a particle-fraction category, reserving a bin for monomers."""
     if size == 1:
         return "mono"
     if particle_fraction < .02:
