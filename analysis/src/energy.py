@@ -18,10 +18,15 @@ KE_KEY = "md/compute/ThermodynamicQuantities/kinetic_energy"
 
 
 def energy_framewise(
-    trajectory: Path, frame_indices: np.ndarray, dt: float | None = None
+    trajectory: Path,
+    frame_indices: np.ndarray,
+    dt: float | None = None,
+    nm_per_sim_length_unit: float | None = None,
 ) -> pd.DataFrame:
-    """Read only the requested frames; missing log channels become NaN."""
+    """Read requested GSD frames; absent log channels become NaN."""
     import gsd.hoomd
+    if nm_per_sim_length_unit is not None:
+        from .single_chain import radius_of_gyration
 
     rows: list[dict[str, float | int]] = []
     with gsd.hoomd.open(str(trajectory), "r") as gsd:
@@ -34,6 +39,8 @@ def energy_framewise(
             }
             if dt is not None:
                 row["time"] = row["step"] * dt
+            if nm_per_sim_length_unit is not None:
+                row["Rg_nm"] = radius_of_gyration(frame, nm_per_sim_length_unit)
             logs = frame.log or {}
             for column, key in ENERGY_KEYS.items():
                 row[column] = float(np.asarray(logs[key]).item()) if key in logs else np.nan
