@@ -271,6 +271,13 @@ def analyze_trajectory(
     lengths = molecule_lengths(lookup)
 
     with np.load(pairing_path) as pairing:
+        step_lookup = (
+            dict(zip(
+                pairing["frame_indices"].astype(int),
+                pairing["steps"].astype(int),
+            ))
+            if "steps" in pairing.files else None
+        )
         framewise = contact_frame_rows(
             pairing,
             lookup,
@@ -333,9 +340,15 @@ def analyze_trajectory(
                             f"Intramolecular-contact NPZ missing for {paths.trajectory}"
                         )
                     with np.load(intra_path) as intra:
-                        ranks, contacts, largest = mixture_cluster_rows(
-                            graph, lengths, species, min_contacts, intra
+                        ranks, contacts, largest, composition = mixture_cluster_rows(
+                            graph, lengths, species, min_contacts, intra,
+                            drop_threshold=int(config["drop_threshold"]),
+                            pairable_sites_by_species={
+                                name: int(count)
+                                for name, count in config["pairable_sites_by_species"].items()
+                            },
                         )
+                    framewise = framewise.merge(composition, on="frame", how="inner")
                     extra_tables = {
                         "ranked_clusters": summarize_table(
                             ranks, fraction, ["rank", "species"]
@@ -348,14 +361,10 @@ def analyze_trajectory(
                         ),
                     }
 
-    if "step" not in framewise:
-        import gsd.hoomd
-
-        with gsd.hoomd.open(str(paths.trajectory), "r") as traj:
-            framewise["step"] = [
-                int(traj[int(frame)].configuration.step)
-                for frame in framewise["frame"]
-            ]
+    if step_lookup is not None and "step" not in framewise:
+        framewise["step"] = framewise["frame"].map(step_lookup)
+        if framewise["step"].isna().any():
+            raise ValueError(f"Pairing NPZ has incomplete step metadata: {pairing_path}")
 
     info = metadata(
         paths,
@@ -374,6 +383,11 @@ def analyze_trajectory(
         )
         if name in framewise
     ]
+    if experiment == "mixture":
+        metric_columns.extend(
+            name for name in composition.columns
+            if name != "frame" and name not in metric_columns
+        )
     summary = {
         **info,
         "late_fraction": fraction,
