@@ -1,0 +1,7 @@
+experiment: single_chain
+late_fraction: 0.20
+min_contacts: 2
+recurrence_window: 20
+length_scale_nm: 0.6
+mfe_file: duplex_mfe.csv
+pair_index_offset: 1
