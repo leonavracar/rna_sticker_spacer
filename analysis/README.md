@@ -39,7 +39,10 @@ NPZs; it never overwrites the original simulation data.
 
 --run-ids 0 selects the parameter-run directory 0_* and analyzes *every*
 trajectory_*.gsd replicate inside it. --save-framewise saves one time-series CSV
-per replicate; it is not required for sweep-level summary tables.
+per replicate; it is not required for summary tables. When --run-ids is set,
+summary CSVs are written inside each selected parameter-run folder instead of
+replacing the full-sweep files. Every aggregated CSV records the late_fraction
+and, where relevant, the minimum graph-contact threshold.
 
 ## Output layout
 
@@ -50,16 +53,16 @@ analysis_results/
     │   ├── computed_metrics/      # if NPZs were generated
     │   │   ├── pairing/
     │   │   └── mol_graph/
-    │   └── framewise/            # only with --save-framewise
-    │       ├── trajectory_0.csv
-    │       └── trajectory_1.csv
-    └── analysis/
+    │   ├── framewise/            # only with --save-framewise
+    │   │   ├── trajectory_0.csv
+    │   │   └── trajectory_1.csv
+    │   └── analysis/             # when selecting this run with --run-ids
+    │       ├── replicate_summary.csv
+    │       └── cluster_distribution.csv
+    └── analysis/                 # when analyzing the entire sweep
         ├── replicate_summary.csv
-        ├── cluster_distribution.csv        # multichain profiles
-        ├── ranked_clusters.csv             # length/patterning or mixture
-        └── selected_runs/
-            └── 0/                          # if --run-ids 0
-                └── replicate_summary.csv
+        ├── cluster_distribution.csv
+        └── ranked_clusters.csv   # length/patterning or mixture
 ~~~
 
 The replicate summary has one row per independent trajectory. Cluster fractions
