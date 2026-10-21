@@ -447,34 +447,73 @@ def write_analysis_tables(
             )
 
 
-def write_results(
+def write_replicate(
+    result: AnalysisResult, save_framewise: bool
+) -> Path:
+    """Persist a replicate immediately so a later failure cannot lose its metrics."""
+    directory = result.paths.output_run / "analysis" / "replicates" / result.paths.stem
+    write_analysis_tables(directory, [result])
+    if save_framewise:
+        output = result.paths.output_run / "framewise" / f"{result.paths.stem}.csv"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        result.framewise.to_csv(output, index=False)
+    return directory
+
+
+def combine_replicates(replicate_dirs: list[Path], destination: Path) -> None:
+    """Combine only the compact CSVs, never the full framewise time series."""
+    destination.mkdir(parents=True, exist_ok=True)
+    names = (
+        "replicate_summary", "cluster_distribution", "ranked_clusters",
+        "cluster_contacts", "largest_cluster",
+    )
+    for name in names:
+        sources = [directory / f"{name}.csv" for directory in replicate_dirs]
+        sources = [path for path in sources if path.is_file()]
+        if not sources:
+            continue
+        pd.concat(
+            (pd.read_csv(path) for path in sources),
+            ignore_index=True,
+        ).to_csv(destination / f"{name}.csv", index=False)
+
+
+def finish_analysis(
     output_sweep: Path,
-    results: list[AnalysisResult],
+    processed: dict[Path, list[Path]],
     run_ids: list[str] | None,
-    save_framewise: bool,
 ) -> list[Path]:
-    """Save selected-run summaries per run, or full-sweep summaries together."""
+    """Write combined summaries for selected runs or for the full sweep."""
     destinations: list[Path] = []
     if run_ids:
-        by_run: dict[Path, list[AnalysisResult]] = {}
-        for result in results:
-            by_run.setdefault(result.paths.output_run, []).append(result)
-        for run_dir, run_results in by_run.items():
-            analysis_dir = run_dir / "analysis"
-            write_analysis_tables(analysis_dir, run_results)
-            destinations.append(analysis_dir)
+        for run_dir, replicates in processed.items():
+            destination = run_dir / "analysis"
+            combine_replicates(replicates, destination)
+            destinations.append(destination)
     else:
-        analysis_dir = output_sweep / "analysis"
-        write_analysis_tables(analysis_dir, results)
-        destinations.append(analysis_dir)
-
-    if save_framewise:
-        for result in results:
-            output = result.paths.output_run / "framewise" / f"{result.paths.stem}.csv"
-            output.parent.mkdir(parents=True, exist_ok=True)
-            result.framewise.to_csv(output, index=False)
-
+        destination = output_sweep / "analysis"
+        combine_replicates(
+            [replicate for replicas in processed.values() for replicate in replicas],
+            destination,
+        )
+        destinations.append(destination)
     return destinations
+
+
+def write_energy(paths: TrajectoryPaths) -> Path:
+    """Opt-in energy pass: read saved frame IDs from NPZ, logs from GSD."""
+    from src.energy import energy_framewise
+
+    pairing_path, _ = pairing_inputs(paths)
+    with np.load(pairing_path) as pairing:
+        frames = np.asarray(pairing["frame_indices"], dtype=np.int64)
+    params = load_params_json(paths.input_run / "params.json")
+    dt = float(params["dt"]) if params.get("dt") is not None else None
+    output = paths.output_run / "energy" / f"{paths.stem}.csv"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    energy_framewise(paths.trajectory, frames, dt).to_csv(output, index=False)
+    return output
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -489,7 +528,7 @@ def main() -> None:
         required=True,
     )
     parser.add_argument(
-        "--stage", choices=("pairing", "graphs", "analyze", "all"),
+        "--stage", choices=("pairing", "graphs", "analyze", "all", "energy"),
         default="analyze",
     )
     parser.add_argument("--run-ids", nargs="+", default=None)
@@ -521,24 +560,28 @@ def main() -> None:
     if not trajectories:
         parser.error("No matching trajectory_*.gsd files found in the input sweep")
 
-    results: list[AnalysisResult] = []
+    processed: dict[Path, list[Path]] = {}
     for paths in trajectories:
         print(f"{args.stage}: {paths.input_run.name}/{paths.trajectory.name}", flush=True)
+        if args.stage == "energy":
+            print(f"Saved optional energy table to {write_energy(paths)}", flush=True)
+            continue
         pairing_changed = False
         if args.stage in ("pairing", "all"):
             pairing_changed = generate_pairing(paths, config, args.overwrite_npz)
         if args.stage in ("graphs", "all"):
             generate_graphs(paths, config, args.overwrite_npz or pairing_changed)
         if args.stage in ("analyze", "all"):
-            results.append(analyze_trajectory(paths, input_sweep, config))
+            result = analyze_trajectory(paths, input_sweep, config)
+            directory = write_replicate(result, args.save_framewise)
+            processed.setdefault(paths.output_run, []).append(directory)
+            print(f"Saved replicate analysis to {directory}", flush=True)
+            del result
 
-    if results:
-        destinations = write_results(
-            output_sweep, results, args.run_ids, args.save_framewise
-        )
-        for destination in destinations:
+    if processed:
+        for destination in finish_analysis(output_sweep, processed, args.run_ids):
             print(f"Saved analysis tables to {destination}")
-    else:
+    elif args.stage != "energy":
         print(f"Generated archives, if needed, under {output_sweep}")
 
 
