@@ -11,13 +11,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-EXPERIMENT_NAMES = {
-    "single_chain": "validation",
-    "reentrance": "rq1_reentrance",
-    "length_patterning": "rq2_length_patterning",
-    "mixture": "rq3_mixtures",
-}
-
 METADATA_FIELDS = {
     "run_id", "folder_name", "traj_replicate", "source_sweep",
     "E_att", "angle_k_ppp", "density", "molecule_file",
@@ -151,19 +144,18 @@ def save_checkpoint(
         )
 
 
-def _replicate_rows(db_path: Path, experiment: str) -> pd.DataFrame:
+def _replicate_rows(db_path: Path) -> pd.DataFrame:
     if not db_path.is_file():
         return pd.DataFrame(columns=REPLICATE_FIELDS)
     with sqlite3.connect(db_path) as connection:
         records = connection.execute(
-            """SELECT source_sweep, metadata_json, metrics_json
-               FROM replicate_results WHERE experiment = ?
-               ORDER BY source_sweep, folder_name, traj_replicate, part""",
-            (experiment,),
+            """SELECT experiment, source_sweep, metadata_json, metrics_json
+               FROM replicate_results
+               ORDER BY experiment, source_sweep, folder_name, traj_replicate, part"""
         ).fetchall()
 
     rows: list[dict[str, Any]] = []
-    for source_sweep, metadata_json, metrics_json in records:
+    for experiment, source_sweep, metadata_json, metrics_json in records:
         metadata = json.loads(metadata_json)
         base = {
             field: metadata.get(field)
@@ -221,15 +213,10 @@ def _aggregate(replicates: pd.DataFrame) -> pd.DataFrame:
     return summary[SUMMARY_FIELDS]
 
 
-def export_experiment(
-    db_path: Path, output_root: Path, experiment: str
-) -> tuple[Path, int]:
-    """Write exactly two tidy tables per experiment from the checkpoint DB."""
-    if experiment not in EXPERIMENT_NAMES:
-        raise ValueError(f"Unknown experiment: {experiment}")
-    replicates = _replicate_rows(db_path, experiment)
-    destination = output_root / "compiled" / EXPERIMENT_NAMES[experiment]
-    destination.mkdir(parents=True, exist_ok=True)
-    replicates.to_csv(destination / "replicates.csv", index=False)
-    _aggregate(replicates).to_csv(destination / "summary.csv", index=False)
-    return destination, len(replicates)
+def export_sweep(db_path: Path, output_sweep: Path) -> tuple[Path, int]:
+    """Export two tidy tables beside the checkpoint for this input sweep."""
+    replicates = _replicate_rows(db_path)
+    output_sweep.mkdir(parents=True, exist_ok=True)
+    replicates.to_csv(output_sweep / "replicates.csv", index=False)
+    _aggregate(replicates).to_csv(output_sweep / "summary.csv", index=False)
+    return output_sweep, len(replicates)
