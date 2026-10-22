@@ -1,5 +1,5 @@
 experiment: mixture
-late_fraction: 0.05
+late_fraction: 0.10
 nm_per_sim_length_unit: 0.6
 min_contacts: 2
 recurrence_window: 20
@@ -8,7 +8,6 @@ r_min: 0.0
 r_max: 0.7
 exclude_chain: 3
 stride: 1
-drop_threshold: 5
 pairable_sites_by_species:
   cag10: 20
   cag47: 94
