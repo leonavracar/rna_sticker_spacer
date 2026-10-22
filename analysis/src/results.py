@@ -97,7 +97,7 @@ def metrics_from_analysis(
             category = str(row.get("rank", row.get("type", "")))
             species = str(row.get("species", ""))
             for name, value in row.items():
-                if name in METADATA_FIELDS or name in {"frame", "rank", "type", "species"}:
+                if name in (METADATA_FIELDS - {"n_molecules", "n_particles"}) or name in {"frame", "rank", "type", "species"}:
                     continue
                 sp = re.search(r"_(cag\d+)$", name)
                 if sp:
