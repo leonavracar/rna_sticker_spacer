@@ -427,7 +427,8 @@ def analyze_trajectory(
             table["late_fraction"] = fraction
             table["min_contacts"] = min_contacts
             for key, value in info.items():
-                table[key] = value
+                if key not in table:
+                    table[key] = value
 
     return AnalysisResult(
         paths=paths,
