@@ -1,115 +1,131 @@
-# RNA analysis pipeline
+# RNA simulation analysis
 
-The analysis reads simulation runs from an input sweep without modifying them.
-Generated NPZ files, CSV summaries and optional framewise outputs are saved under
-an independent output root. Each parameter-run directory contains independent
-replicate trajectories named trajectory_*.gsd.
+Reproducible analysis of coarse-grained RNA simulations for single-chain
+validation, RQ1 (reentrance), RQ2 (length/patterning), and RQ3 (mixtures).
 
-## Run the analysis
+The pipeline runs GSD -> accepted pairing NPZ -> molecular graph NPZ ->
+framewise measurements -> **replicate-level 10% means**. It checkpoints each
+completed replicate in SQLite, then exports **two plotting-ready CSVs per
+experiment**. Original simulation input is never modified.
 
-From the repository root:
+## Run
+
+From the repository root, for example:
 
 ~~~bash
 python analysis/run_pipeline.py \
-  --sweep /path/to/simulation/bulk/output_dir/53a_single_mol \
+  --sweep ../validation/bulk/output_dir/52b_from_frame \
   --output-root ./analysis_results \
-  --experiment single_chain \
-  --stage analyze \
-  --run-ids 0 \
-  --viennarna-reference duplex_mfe.csv
+  --experiment mixture \
+  --stage all
 ~~~
 
-The --viennarna-reference path is relative to the input sweep unless absolute.
-The default is set in configs/single_chain.yaml and must correspond to the
-sequence simulated in the GSD.
+To reanalyze existing NPZs **without opening GSDs**:
 
-Experiment profiles: single_chain, reentrance, length_patterning, mixture.
-The YAML files contain contact settings and late-time averaging windows.
+~~~bash
+python analysis/run_pipeline.py \
+  --sweep ../validation/bulk/output_dir/52b_from_frame \
+  --output-root ./analysis_results \
+  --experiment mixture \
+  --stage analyze
+~~~
 
-| Stage | Operation |
-| --- | --- |
-| pairing | GSD to accepted base-pair NPZ and molecule lookup |
-| graphs | Pairing NPZ to weighted molecule-edge NPZ; intramolecular counts for mixtures |
-| analyze | NPZs and params.json to per-replicate metrics and CSVs; no GSD reads |
-| all | Run pairing, graphs, analyze in order (excludes optional energy) |
-| energy | Optional GSD pass for logged energies, kinetic energy and single-chain Rg |
+The available profiles are \`single_chain\`, \`reentrance\`,
+\`length_patterning\`, and \`mixture\`. All profiles use the **final 10%
+of sampled frames**. Use \`--run-ids 0\` to select parameter-run folder
+\`0_*\`; all \`trajectory_*.gsd\` replicates within it are included.
 
-Existing NPZs are reused (output location first, input location second). New
-NPZs are written to the output tree only. --overwrite-npz regenerates output
-NPZs; it never overwrites the original simulation data.
+| Stage | Reads | Produces |
+| --- | --- | --- |
+| \`pairing\` | GSD | Accepted-pair NPZ, molecule lookup, exact GSD step indices |
+| \`graphs\` | NPZ | Weighted molecular graph NPZ, plus intramolecular NPZ for mixtures |
+| \`analyze\` | NPZ + \`params.json\` | SQLite checkpoint and compiled CSVs; **no GSD reads** |
+| \`all\` | GSD, then NPZ | Pairing, graphs, analysis; excludes optional energy |
+| \`energy\` | GSD | Optional logged energies, KE per particle and single-chain Rg, summarized in SQLite |
 
---run-ids 0 selects the parameter-run directory 0_* and analyzes *every*
-trajectory_*.gsd replicate inside it. --save-framewise saves one time-series CSV
-per replicate; it is not required for summary tables. Each replicate's small
-analysis CSVs are saved immediately under `<run>/analysis/replicates/trajectory_N/`,
-and the framewise DataFrame is released before the next replicate. If a later
-replicate fails, earlier per-replicate CSVs remain available. Once all selected
-replicates finish, the small tables are combined: under each run folder when
---run-ids is set, or at the sweep level for a complete sweep. Every aggregated
-CSV records late_fraction and, where relevant, the graph-contact threshold.
+\`--overwrite-npz\` only overwrites NPZs beneath the new output root.
+Pairing/contact-graph scientific calculations are unchanged by aggregation.
+\`--save-framewise\` optionally saves diagnostic time series per trajectory
+under the mirrored run directory, but is off by default.
 
-`--stage analyze` never opens GSDs, including for single-chain analysis.
-The pairing NPZ supplies frame IDs. Pairing NPZs generated with this version
-also store an exact `steps` array copied while first generating the pairings.
-Older NPZs may not contain `steps`; in that case analyze omits the step column
-rather than guessing the simulation's starting step. Existing NPZs need not be
-regenerated for the other metrics.
+Single-chain analysis requires a matching ViennaRNA reference CSV. Specify
+\`--viennarna-reference path/to/reference.csv\` to override the configured
+reference path; relative paths are resolved against the input sweep.
+Single-chain Rg is computed by the optional \`energy\` stage, since geometry
+requires the original GSD frames.
 
-Logged energy, kinetic energy and single-chain Rg need GSD snapshots. Extract
-them only when needed by running `--stage energy`. This writes a separate
-`<run>/energy/trajectory_N.csv`, aligned by NPZ frame indices. It never uses
-old analysis CSVs and is excluded from `--stage all`.
-
-For the mixture profile, the NPZ-only analysis also summarizes species-specific
-monomer/oligomer/droplet fractions, recruitment into mixed components,
-homotypic/heterotypic degrees, molecule-edge enrichment against the
-molecule-count null model, and nucleotide contact saturation. Its YAML specifies
-a droplet threshold of 5 molecules and 20/94 pairable sites per CAG10/CAG47 RNA.
-
-## Output layout
+## Output
 
 ~~~text
 analysis_results/
-└── 53a_single_mol/
-    ├── 0_E_att_.../
-    │   ├── computed_metrics/      # if NPZs were generated
-    │   │   ├── pairing/
-    │   │   └── mol_graph/
-    │   ├── framewise/            # only with --save-framewise
-    │   │   ├── trajectory_0.csv
-    │   │   └── trajectory_1.csv
-    │   ├── energy/               # only with --stage energy
-    │   │   └── trajectory_0.csv
-    │   └── analysis/
-    │       ├── replicates/        # each replicate saved immediately
-    │       │   ├── trajectory_0/
-    │       │   │   └── replicate_summary.csv
-    │       │   └── trajectory_1/
-    │       │       └── replicate_summary.csv
-    │       ├── replicate_summary.csv   # combined selected-run outputs
-    │       └── cluster_distribution.csv
-    └── analysis/                 # when analyzing the entire sweep
-        ├── replicate_summary.csv
-        ├── cluster_distribution.csv
-        └── ranked_clusters.csv   # length/patterning or mixture
+├── analysis.sqlite                # atomic checkpoint per replicate
+├── 52b_from_frame/                # mirrored run hierarchy; generated NPZs
+│   └── <parameter-run>/
+│       └── computed_metrics/...
+└── compiled/
+    ├── validation/
+    │   ├── replicates.csv
+    │   └── summary.csv
+    ├── rq1_reentrance/
+    │   ├── replicates.csv
+    │   └── summary.csv
+    ├── rq2_length_patterning/
+    │   ├── replicates.csv
+    │   └── summary.csv
+    └── rq3_mixtures/
+        ├── replicates.csv
+        └── summary.csv
 ~~~
 
-The replicate summary has one row per independent trajectory. Cluster fractions
-are particle-weighted. Late-window averages are calculated separately per
-replicate, rather than pooling trajectories across a parameter combination.
+**\`replicates.csv\`** is a long-format table: each row is one metric for
+one independent trajectory. It contains the sweep, parameter-run folder,
+trajectory identifier, molecule-file provenance, sequence class
+(\`repeat\`, \`scrambled\`, \`mixed\`), CAG repeat count where applicable,
+density, E_att, stiffness, fraction of frames, metric group, metric name,
+category, species, and value. Concentrations \`conc_mol_per_L\` and
+\`conc_nuc_per_L\` use the configured length conversion (0.6 nm/unit).
 
-## Physical concentrations
+**\`summary.csv\`** groups observations by experimental conditions,
+metric group, metric, cluster class or contact type, and species. It contains
+\`mean\`, \`std\`, \`p10\`, \`p90\`, \`n\` (independent units) and
+\`n_trajectories\`. For periodic sequences, trajectories are the units.
+For scrambled controls, trajectories of the *same scramble sequence* are
+averaged first, and each distinct scramble has equal weight. We keep the
+actual \`molecule_file\` in replicates.csv for traceability, not as an
+experimental grouping condition.
 
-The original molarity calculations are included in each per-replicate summary
-and cluster-distribution table:
+**All RQs use the same 10% window**, including pure-system references
+plotted beside mixtures. No old CSVs are read. Legacy per-run CSVs created
+by earlier runner versions may remain on disk, but this version neither
+creates nor uses them.
 
-- `conc_mol_per_L`: RNA molecule concentration in mol/L.
-- `conc_nuc_per_L`: nucleotide/bead concentration in mol/L.
+If the run is interrupted, previously committed replicates remain in SQLite.
+To regenerate only the final tables (without GSD or NPZ reads), run:
 
-The simulation `density` is bead number density. The box volume is
-`n_particles / density` in simulation volume units, converted to liters
-using `nm_per_sim_length_unit**3 * 1e-24`. Both concentrations use Avogadro's
-constant and the actual number of molecules/particles from the saved lookup.
-The `nm_per_sim_length_unit` value is configured for each experiment and is
-also used to convert single-chain radius of gyration to nm during the
-optional GSD energy/geometry pass.
+~~~bash
+python analysis/aggregate.py --output-root ./analysis_results
+~~~
+
+Or export a single experiment with \`--experiment mixture\`.
+
+## Figure mapping
+
+The notebooks do plotting and hypothesis tests; the pipeline produces the
+measurements and descriptive summaries:
+
+- **Validation (Figures 6–8):** MFE matches, extra pairs, precision, recall;
+  optional GSD-based Rg.
+- **RQ1 (Figures 9–12):** \`cluster_bins_molecule_count\`, base-pair
+  intra/inter counts, edge counts/weights, mean molecule recurrence.
+- **RQ2 (Figures 13–15):** \`cluster_bins_particle_percentage\`,
+  \`ranked_clusters\`, mean particle recurrence, edge weights; replicate
+  data support permutation tests in the notebook.
+- **RQ3 (Figures 16–18):** \`ranked_clusters\` by species,
+  \`cluster_contacts\` by contact type and \`largest_cluster\` size,
+  molecular graph degree and edge counts. The pure reference panels of
+  Figure 16 come from RQ2.
+
+No monomer/oligomer/droplet *threshold classification* is computed.
+Monomers remain a legitimate cluster-size bin and ranked material class.
+The original thesis's 2D density projections require an explicit optional
+GSD visualization step and are not recreated by the compiled tables.
