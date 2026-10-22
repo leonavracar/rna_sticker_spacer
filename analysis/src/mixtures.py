@@ -44,7 +44,6 @@ def mixture_cluster_rows(
     species: np.ndarray,
     min_contacts: int = 2,
     intra_npz=None,
-    drop_threshold: int = 5,
     pairable_sites_by_species: dict[str, int] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Return ranked, largest-cluster, contact and system-wide framewise metrics.
@@ -57,8 +56,6 @@ def mixture_cluster_rows(
     species = np.asarray(species, dtype=str)
     if len(lengths) != len(species):
         raise ValueError("Species and lengths must describe the same molecules")
-    if drop_threshold <= 1:
-        raise ValueError("Drop threshold must exceed one molecule")
 
     total_particles = int(lengths.sum())
     n_molecules = len(lengths)
@@ -91,23 +88,11 @@ def mixture_cluster_rows(
         comps = connected_components(
             n_molecules, qa, qb, weights[qualifies], min_contacts=1
         )
-        sizes = np.zeros(n_molecules, dtype=int)
-        for comp in comps:
-            sizes[comp] = len(comp)
-
         row: dict[str, int | float] = {"frame": frame}
         for sp in names:
-            mask = species == sp
             n_sp = n_by_type[sp]
             row[f"n_mol_{sp}"] = n_sp
             row[f"frac_mol_{sp}"] = _ratio(n_sp, n_molecules)
-            row[f"mono_frac_{sp}"] = _ratio(np.count_nonzero(mask & (sizes == 1)), n_sp)
-            row[f"oligo_frac_{sp}"] = _ratio(
-                np.count_nonzero(mask & (sizes > 1) & (sizes < drop_threshold)), n_sp
-            )
-            row[f"drop_frac_{sp}"] = _ratio(
-                np.count_nonzero(mask & (sizes >= drop_threshold)), n_sp
-            )
 
         particle_counts: Counter[str] = Counter()
         for x, y, n in zip(a, b, weights):
