@@ -21,7 +21,7 @@ ANALYSIS_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(ANALYSIS_DIR))
 
 from src.concentration import concentrations_from_density
-from src.results import export_experiment, metrics_from_analysis, save_checkpoint
+from src.results import export_sweep, metrics_from_analysis, save_checkpoint
 from src.framewise import (
     component_frame_rows,
     contact_frame_rows,
@@ -548,7 +548,7 @@ def main() -> None:
     if not trajectories:
         parser.error("No matching trajectory_*.gsd files found in the input sweep")
 
-    db_path = output_root / "analysis.sqlite"
+    db_path = output_sweep / "analysis.sqlite"
     processed_count = 0
     for paths in trajectories:
         print(f"{args.stage}: {paths.input_run.name}/{paths.trajectory.name}", flush=True)
@@ -578,7 +578,7 @@ def main() -> None:
             print(f"Checkpointed replicate: {paths.stem}", flush=True)
 
     if processed_count:
-        destination, n_rows = export_experiment(db_path, output_root, args.experiment)
+        destination, n_rows = export_sweep(db_path, output_sweep)
         print(f"Exported {n_rows} metric rows to {destination}")
     else:
         print(f"Generated archives, if needed, under {output_sweep}")
