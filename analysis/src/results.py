@@ -57,7 +57,9 @@ def metrics_from_analysis(
 
     def add(group: str, metric: str, value: Any,
             category: str = "", species: str = "") -> None:
-        if value is None or not pd.api.types.is_number(value):
+        if value is None or isinstance(value, (bool, np.bool_)) or not isinstance(
+            value, (int, float, np.integer, np.floating)
+        ):
             return
         number = float(value)
         if not np.isfinite(number):
@@ -97,7 +99,12 @@ def metrics_from_analysis(
             category = str(row.get("rank", row.get("type", "")))
             species = str(row.get("species", ""))
             for name, value in row.items():
-                if name in (METADATA_FIELDS - {"n_molecules", "n_particles"}) or name in {"frame", "rank", "type", "species"}:
+                if name in {"frame", "rank", "type", "species"}:
+                    continue
+                if name in METADATA_FIELDS and not (
+                    table_name in {"ranked_clusters", "largest_cluster"}
+                    and name in {"n_molecules", "n_particles"}
+                ):
                     continue
                 sp = re.search(r"_(cag\d+)$", name)
                 if sp:
