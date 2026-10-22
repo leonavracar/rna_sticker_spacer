@@ -5,8 +5,8 @@ validation, RQ1 (reentrance), RQ2 (length/patterning), and RQ3 (mixtures).
 
 The pipeline runs GSD -> accepted pairing NPZ -> molecular graph NPZ ->
 framewise measurements -> **replicate-level 10% means**. It checkpoints each
-completed replicate in SQLite, then exports **two plotting-ready CSVs per
-experiment**. Original simulation input is never modified.
+completed replicate in the input sweep's output folder, then exports **two plotting-ready CSVs per
+sweep**. Original simulation input is never modified.
 
 ## Run
 
@@ -58,23 +58,20 @@ requires the original GSD frames.
 
 ~~~text
 analysis_results/
-├── analysis.sqlite                # atomic checkpoint per replicate
-├── 52b_from_frame/                # mirrored run hierarchy; generated NPZs
+├── 52b_from_frame/               # automatically named after --sweep
+│   ├── analysis.sqlite           # replicate checkpoints for this sweep
+│   ├── replicates.csv
+│   ├── summary.csv
 │   └── <parameter-run>/
-│       └── computed_metrics/...
-└── compiled/
-    ├── validation/
-    │   ├── replicates.csv
-    │   └── summary.csv
-    ├── rq1_reentrance/
-    │   ├── replicates.csv
-    │   └── summary.csv
-    ├── rq2_length_patterning/
-    │   ├── replicates.csv
-    │   └── summary.csv
-    └── rq3_mixtures/
-        ├── replicates.csv
-        └── summary.csv
+│       └── computed_metrics/...  # pairing and graph NPZs
+├── 51a_repeat_number/
+│   ├── analysis.sqlite
+│   ├── replicates.csv
+│   └── summary.csv
+└── 51b_repeat_number_rand/
+    ├── analysis.sqlite
+    ├── replicates.csv
+    └── summary.csv
 ~~~
 
 **`replicates.csv`** is a long-format table: each row is one metric for
@@ -85,7 +82,7 @@ density, E_att, stiffness, fraction of frames, metric group, metric name,
 category, species, and value. Concentrations `conc_mol_per_L` and
 `conc_nuc_per_L` use the configured length conversion (0.6 nm/unit).
 
-**`summary.csv`** groups observations by experimental conditions,
+**`summary.csv`** groups observations within that sweep by experimental conditions,
 metric group, metric, cluster class or contact type, and species. It contains
 `mean`, `std`, `p10`, `p90`, `n` (independent units) and
 `n_trajectories`. For periodic sequences, trajectories are the units.
@@ -100,13 +97,17 @@ by earlier runner versions may remain on disk, but this version neither
 creates nor uses them.
 
 If the run is interrupted, previously committed replicates remain in SQLite.
-To regenerate only the final tables (without GSD or NPZ reads), run:
+To regenerate all sweep tables from their checkpoint databases (without GSD or
+NPZ reads), run:
 
 ~~~bash
 python analysis/aggregate.py --output-root ./analysis_results
 ~~~
 
-Or export a single experiment with `--experiment mixture`.
+Or export just one input sweep by adding `--sweep 52b_from_frame`.
+The output names are **never based on the research question**; they always
+match the input sweep folder. Different sweeps stay independent, including
+the periodic and scrambled RQ2 runs, which the notebook can compare.
 
 ## Figure mapping
 
