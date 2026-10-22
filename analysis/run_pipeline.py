@@ -240,7 +240,7 @@ def metadata(
         if experiment in {"single_chain", "mixture"} or repeat_count is None
         else f"cag{repeat_count}"
     )
-    scramble_match = re.search(r"_rep_(\\d+)(?=\\.|$)", molecule_file)
+    scramble_match = re.search(r"_rep_(\d+)(?=\.|$)", molecule_file)
     scramble_id = (
         scramble_match.group(1)
         if sequence_class == "scrambled" and scramble_match else None
