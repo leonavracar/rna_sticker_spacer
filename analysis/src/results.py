@@ -23,19 +23,19 @@ METADATA_FIELDS = {
     "E_att", "angle_k_ppp", "density", "molecule_file",
     "n_molecules", "n_particles", "nm_per_sim_length_unit",
     "conc_mol_per_L", "conc_nuc_per_L", "late_fraction",
-    "min_contacts", "sequence_class", "repeat_count",
+    "min_contacts", "sequence_class", "repeat_count", "system_id", "scramble_id",
 }
 
 GROUP_FIELDS = [
-    "experiment", "sequence_class", "repeat_count",
+    "experiment", "system_id", "sequence_class", "repeat_count",
     "E_att", "angle_k_ppp", "density", "n_molecules",
-    "n_particles", "late_fraction", "min_contacts",
+    "n_particles", "nm_per_sim_length_unit", "late_fraction", "min_contacts",
     "metric_group", "metric", "category", "species",
 ]
 
 REPLICATE_FIELDS = [
     "experiment", "source_sweep", "folder_name", "traj_replicate",
-    "molecule_file", "sequence_class", "repeat_count",
+    "molecule_file", "system_id", "sequence_class", "repeat_count", "scramble_id",
     "E_att", "angle_k_ppp", "density", "n_molecules", "n_particles",
     "nm_per_sim_length_unit", "conc_mol_per_L", "conc_nuc_per_L",
     "late_fraction", "min_contacts", "metric_group", "metric",
