@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import sys
 from typing import Any, Iterator
 
@@ -234,6 +235,17 @@ def metadata(
         else None
     )
 
+    system_id = (
+        molecule_file
+        if experiment in {"single_chain", "mixture"} or repeat_count is None
+        else f"cag{repeat_count}"
+    )
+    scramble_match = re.search(r"_rep_(\\d+)(?=\\.|$)", molecule_file)
+    scramble_id = (
+        scramble_match.group(1)
+        if sequence_class == "scrambled" and scramble_match else None
+    )
+
     concentrations = concentrations_from_density(
         density=density,
         n_particles=n_particles,
@@ -247,6 +259,8 @@ def metadata(
         "source_sweep": sweep_name,
         "sequence_class": sequence_class,
         "repeat_count": repeat_count,
+        "system_id": system_id,
+        "scramble_id": scramble_id,
         "E_att": params.get("E_att"),
         "angle_k_ppp": params.get("angle_k_ppp"),
         "density": density,
