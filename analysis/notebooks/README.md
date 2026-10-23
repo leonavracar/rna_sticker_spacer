@@ -15,46 +15,46 @@ implementations.
 ## Quick start
 
 1. Analyze the relevant **complete** sweep(s) with
-   \`python analysis/run_pipeline.py --stage all ...\`. A single run ID is enough
+   `python analysis/run_pipeline.py --stage all ...`. A single run ID is enough
    to smoke-test the pipeline, but is **not enough** to create all figures
    spanning the E_att/stiffness/length parameter grid.
-2. Keep outputs under \`analysis_results/<actual-input-sweep>/\`, containing
-   \`replicates.csv\` and \`summary.csv\`. No figure needs a legacy analysis CSV.
+2. Keep outputs under `analysis_results/<actual-input-sweep>/`, containing
+   `replicates.csv` and `summary.csv`. No figure needs a legacy analysis CSV.
 3. Start Jupyter from within the repository checkout and open the notebook:
-   \`jupyter lab analysis/notebooks/\`. Configure only the sweep-name cell and,
+   `jupyter lab analysis/notebooks/`. Configure only the sweep-name cell and,
    when needed, the desired density/stiffness conditions.
 4. Execute top to bottom. Figures appear inline; use Matplotlib's
-   \`fig.savefig(..., dpi=300, bbox_inches="tight")\` to export curated artwork.
+   `fig.savefig(..., dpi=300, bbox_inches="tight")` to export curated artwork.
 
 The notebooks never need to import HOOMD-blue. The base plotting dependencies
-are \`pandas\`, \`numpy\`, \`matplotlib\` and \`seaborn\`. The optional GSD
-projections additionally need \`gsd\` and \`scipy\`.
-The optional dashboard needs \`ipywidgets\`; the optional HTML molecular
-network needs \`pyvis\`.
+are `pandas`, `numpy`, `matplotlib` and `seaborn`. The optional GSD
+projections additionally need `gsd` and `scipy`.
+The optional dashboard needs `ipywidgets`; the optional HTML molecular
+network needs `pyvis`.
 
 ## Module layout
 
-- \`src/plots/style.py\` — PlotStyle dataclass, human-readable labels,
+- `src/plots/style.py` — PlotStyle dataclass, human-readable labels,
   seven-bin palette, ranked-category and RNA-species colors
-- \`src/plots/data.py\` — load one sweep's wide tables, select conditions,
-  \`melt_metrics()\` on demand, and construct independent scramble units
-- \`src/plots/figures.py\` — Matplotlib/Seaborn axes-first, reusable
+- `src/plots/data.py` — load one sweep's wide tables, select conditions,
+  `melt_metrics()` on demand, and construct independent scramble units
+- `src/plots/figures.py` — Matplotlib/Seaborn axes-first, reusable
   scientific summary plots, including mixture contact composition
-- \`src/plots/panels.py\` — \`panels_by()\` / axes grids
-- \`src/plots/projections.py\` — FINAL-frame XY density projections from
+- `src/plots/panels.py` — `panels_by()` / axes grids
+- `src/plots/projections.py` — FINAL-frame XY density projections from
   GSD, reusable with RQ1 rows = stiffness or RQ2 rows = repeat count
-- \`src/plots/framewise.py\` — time-series plotting functions **kept outside
+- `src/plots/framewise.py` — time-series plotting functions **kept outside
   the curated notebooks**, because framewise CSVs are not exported by default
-- \`src/plots/networks.py\` — optional PyVis export from saved
+- `src/plots/networks.py` — optional PyVis export from saved
   molecule-contact graph NPZ (standalone HTML)
-- \`src/plots/explorer.py\` — optional inline ipywidgets metric explorer
-- \`src/plots/diagnostic.py\` — older full diagnostic / RDF helpers,
+- `src/plots/explorer.py` — optional inline ipywidgets metric explorer
+- `src/plots/diagnostic.py` — older full diagnostic / RDF helpers,
   preserved separately, not part of the main plotting workflow
 
 ## Your existing functools.partial / PlotStyle pattern
 
-Every reusable plot function takes \`(df, ax, *, style, ...)\`. A notebook
-pins presentation choices with \`partial\`, while the panel helper supplies
+Every reusable plot function takes `(df, ax, *, style, ...)`. A notebook
+pins presentation choices with `partial`, while the panel helper supplies
 the data subset and Matplotlib Axes:
 
 ~~~python
@@ -72,37 +72,37 @@ fig, axes = panels_by(
 )
 ~~~
 
-Use \`style.label("E_att")\` for LaTeX axes and \`style.label_map\`,
-\`style.stack_colors\`, \`style.rank_colors\`, \`style.contact_colors\`,
-or \`style.species_colors\` for appearance. Do not change scientific
+Use `style.label("E_att")` for LaTeX axes and `style.label_map`,
+`style.stack_colors`, `style.rank_colors`, `style.contact_colors`,
+or `style.species_colors` for appearance. Do not change scientific
 calculations when changing figure aesthetics.
 
 ## Wide tables and reshaping
 
 The source of truth remains the wide per-replicate and condition CSVs.
-Use \`melt_metrics(df, metrics, id_vars=...)\` only for plots that naturally
+Use `melt_metrics(df, metrics, id_vars=...)` only for plots that naturally
 treat metric name as a categorical variable. Do **not** melt every metric
 in every notebook as a prerequisite. Seaborn handles independent replicate
 box/strip plots; Matplotlib handles stacked fraction bars.
 
 RQ2 scientific comparisons must use **independent scrambled sequence units**,
 not repeated trajectories of a single scramble. The helper
-\`independent_units()\` enforces the sequence-level grouping for exploratory
+`independent_units()` enforces the sequence-level grouping for exploratory
 plots; adjust statistical-testing families explicitly in the notebook.
 
 ## Optional spatial and network figures
 
-The RQ1 and RQ2 notebooks each contain an opt-in \`SHOW_PROJECTIONS = False\`
+The RQ1 and RQ2 notebooks each contain an opt-in `SHOW_PROJECTIONS = False`
 cell. Turn it on only with the original GSD sweeps accessible. The clean
 projection reproduces the **representative final XY frame**, not pooled
 densities, 1D profiles or RDFs. Both plots use the same code and shared
 color normalization across the grid.
 
-RQ3 includes optional \`EXPORT_PYVIS = False\`. It creates an undirected,
+RQ3 includes optional `EXPORT_PYVIS = False`. It creates an undirected,
 species-colored, contact-weighted interactive HTML directly from the saved
 graph NPZ and molecule lookup. No extra framewise CSV is required.
 
-Optional framewise trace helpers remain in \`src/plots/framewise.py\` and are
+Optional framewise trace helpers remain in `src/plots/framewise.py` and are
 **not included in the four notebooks**.
 
 ## Reproducibility and testing
@@ -113,5 +113,5 @@ python -m pytest analysis/tests -q
 
 Tests cover the four analysis profiles and plotting utilities with synthetic
 data. Review the compiled CSVs for full sweeps before interpreting results.
-The legacy notebooks and exported HTML under \`notebooks/\` remain intact
+The legacy notebooks and exported HTML under `notebooks/` remain intact
 as references; this new workflow does not depend on their outputs.
