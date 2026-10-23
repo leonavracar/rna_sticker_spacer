@@ -15,6 +15,10 @@ BIN_COLORS = (
     "#f4a582", "#d6604d", "#b2182b",
 )
 RANK_COLORS = ("#275DAD", "#55A0C8", "#A3CCDF", "#E6B86C", "#D8DCE4")
+ATTRACTION_COLORS = (
+    "#8C6BB1", "#2D76B8", "#E99443", "#4E9B6E",
+    "#C64A5B", "#8064AC", "#75564E", "#39A6B4",
+)
 SPECIES_COLORS = {"cag10": "#409AD2", "cag47": "#E65C64"}
 CONTACT_COLORS = {
     "cag10_cag10": "#409AD2",
@@ -102,6 +106,7 @@ class PlotStyle:
     cmap: str = "magma"
     stack_colors: tuple[str, ...] = BIN_COLORS
     rank_colors: tuple[str, ...] = RANK_COLORS
+    attraction_colors: tuple[str, ...] = ATTRACTION_COLORS
     species_colors: Mapping[str, str] = field(default_factory=lambda: dict(SPECIES_COLORS))
     contact_colors: Mapping[str, str] = field(default_factory=lambda: dict(CONTACT_COLORS))
     label_map: Mapping[str, str] = field(default_factory=lambda: dict(LABELS))
@@ -118,6 +123,13 @@ class PlotStyle:
             "axes.spines.top": False,
             "axes.spines.right": False,
             "savefig.dpi": self.dpi,
+        }
+
+    def attraction_palette(self, values) -> dict:
+        """Use one consistent attraction color across every validation panel."""
+        return {
+            value: self.attraction_colors[i % len(self.attraction_colors)]
+            for i, value in enumerate(values)
         }
 
     def label(self, field: str) -> str:
