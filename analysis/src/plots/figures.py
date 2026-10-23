@@ -34,16 +34,37 @@ def _format_axis(ax: Axes, *, style: PlotStyle, xlabel: str, ylabel: str,
     return ax
 
 
+def _categorical_axis(
+    df: pd.DataFrame, x: str, order: Sequence | None = None,
+) -> tuple[list, np.ndarray]:
+    """Equally spaced positions for measured parameters, not numeric gaps."""
+    values = list(order) if order is not None else sorted(df[x].dropna().unique())
+    if not values:
+        raise ValueError(f"No {x} values to plot")
+    unknown = set(df[x].dropna().unique()) - set(values)
+    if unknown:
+        raise ValueError(f"x_order is missing observed values: {sorted(unknown)}")
+    return values, np.arange(len(values), dtype=float)
+
+
+def _set_categorical_ticks(ax: Axes, values: Sequence) -> None:
+    ax.set_xticks(np.arange(len(values)), [
+        f"{value:g}" if isinstance(value, (int, float, np.number))
+        else str(value) for value in values
+    ])
+    ax.set_xlim(-.45, len(values) - .55)
+
+
 def plot_metric_series(
     df: pd.DataFrame, ax: Axes, *,
     metric: str, x: str = "E_att", style: PlotStyle,
     band: str = "std", color: str = "#2F76B7",
     label: str | None = None, show_points: bool = True,
+    x_order: Sequence | None = None,
 ) -> Axes:
-    """Condition mean and variability from a *summary.csv* (not framewise)."""
+    """Condition means on evenly spaced categorical parameter values."""
     mean_col = f"{metric}_mean"
-    lo_col = f"{metric}_p10"
-    hi_col = f"{metric}_p90"
+    lo_col, hi_col = f"{metric}_p10", f"{metric}_p90"
     if band not in ("std", "p10_p90", "none"):
         raise ValueError("band must be 'std', 'p10_p90', or 'none'")
     required = [x, mean_col]
@@ -52,10 +73,14 @@ def plot_metric_series(
     elif band == "p10_p90":
         required += [lo_col, hi_col]
     require_columns(df, required)
-    d = df.sort_values(x).dropna(subset=[x, mean_col])
+    d = df.dropna(subset=[x, mean_col]).copy()
     if d[x].duplicated().any():
         raise ValueError(f"Filter to one experimental series: {x} has duplicate values")
-    xx = d[x].to_numpy(dtype=float)
+    values, _ = _categorical_axis(d, x, x_order)
+    locations = {v: i for i, v in enumerate(values)}
+    d["_position"] = d[x].map(locations)
+    d = d.sort_values("_position")
+    xx = d["_position"].to_numpy(dtype=float)
     yy = d[mean_col].to_numpy(dtype=float)
     ax.plot(xx, yy, marker="o" if show_points else None, lw=style.mean_lw,
             color=color, label=label)
@@ -67,10 +92,68 @@ def plot_metric_series(
             low = d[lo_col].to_numpy(dtype=float)
             high = d[hi_col].to_numpy(dtype=float)
         ax.fill_between(xx, low, high, color=color, alpha=style.band_alpha)
-    if label is not None:
-        ax.legend(loc=style.legend_loc, frameon=False)
+    _set_categorical_ticks(ax, values)
     return _format_axis(ax, style=style, xlabel=style.label(x),
                         ylabel=style.label(metric))
+
+
+def plot_contact_balance(
+    df: pd.DataFrame, ax: Axes, *,
+    style: PlotStyle, x: str = "E_att", x_order: Sequence | None = None,
+    band: str = "std",
+) -> Axes:
+    """Thesis Fig. 10: inter-, intramolecular and total base-pair contacts."""
+    metrics = (
+        ("n_inter_contacts", "Intermolecular", "#CA4258"),
+        ("n_intra_contacts", "Intramolecular", "#2798CC"),
+        ("n_base_pairs", "Total", "#6D4AA1"),
+    )
+    for metric, label, color in metrics:
+        plot_metric_series(df, ax, style=style, metric=metric, x=x,
+                           x_order=x_order, color=color, label=label, band=band)
+    ax.set_ylabel("Number of base-pair contacts")
+    return ax
+
+
+def plot_recurrence_summary(
+    summary: pd.DataFrame, ax: Axes, *, replicates: pd.DataFrame,
+    style: PlotStyle, x: str = "E_att",
+    metric: str = "molecule_recurrence",
+) -> Axes:
+    """Thesis Fig. 12: individual replicate points, mean and SD."""
+    values, _ = _categorical_axis(summary, x)
+    positions = {v: i for i, v in enumerate(values)}
+    require_columns(replicates, [x, metric])
+    rng = np.random.default_rng(42)
+    raw = replicates.dropna(subset=[x, metric])
+    ax.scatter(raw[x].map(positions).to_numpy(dtype=float)
+               + rng.uniform(-style.jitter, style.jitter, len(raw)),
+               raw[metric], color="#75889B", s=style.point_size * .7,
+               alpha=.55, zorder=2)
+    plot_metric_series(summary, ax, metric=metric, x=x, x_order=values,
+                       style=style, color="#235F92", band="std")
+    ax.set_ylim(bottom=0)
+    return ax
+
+
+def plot_largest_cluster_metric(
+    df: pd.DataFrame, ax: Axes, *, metric: str, annotation: str,
+    style: PlotStyle, annotation_label: str, color: str,
+    x: str = "E_att",
+) -> Axes:
+    """Thesis Fig. 18: largest-cluster observable and annotated counts."""
+    require_columns(df, [x, f"{metric}_mean", f"{annotation}_mean"])
+    plot_metric_series(df, ax, metric=metric, x=x, style=style, band="none",
+                       color=color)
+    for i, (_, record) in enumerate(df.sort_values(x).iterrows()):
+        ax.annotate(
+            f"{record[f'{annotation}_mean']:.0f}",
+            (i, record[f"{metric}_mean"]), xytext=(0, 10),
+            textcoords="offset points", ha="center", va="bottom",
+            fontsize=style.tick_size, color=color,
+        )
+    ax.margins(y=.15)
+    return ax
 
 
 def plot_metric_points(
@@ -284,9 +367,9 @@ def plot_mixture_ranked_bars(
 
 def plot_largest_contact_composition(
     df: pd.DataFrame, ax: Axes, *, style: PlotStyle, x: str = "E_att",
-    annotate_counts: bool = True,
+    annotate_counts: bool = True, annotate_total: bool = True,
 ) -> Axes:
-    """RQ3 Fig. 17: intermolecular contacts INSIDE the largest component only."""
+    """Thesis Fig. 17: contact classes inside the largest component."""
     kinds = ("cag10_cag10", "cag10_cag47", "cag47_cag47")
     columns = [
         f"largest_contacts_{kind}_fraction_inter_contacts_mean" for kind in kinds
@@ -294,12 +377,22 @@ def plot_largest_contact_composition(
     annotations = [
         f"largest_contacts_{kind}_n_inter_contacts_mean" for kind in kinds
     ] if annotate_counts else None
-    return plot_stacked_fractions(
+    plot_stacked_fractions(
         df, ax, columns=columns, x=x,
         annotation_columns=annotations, style=style,
         labels=["10–10", "10–47", "47–47"],
         colors=[style.contact_colors[k] for k in kinds],
     )
+    if annotate_total:
+        require_columns(df, [
+            f"largest_contacts_{kind}_n_inter_contacts_mean" for kind in kinds
+        ])
+        for i, (_, row) in enumerate(df.sort_values(x).iterrows()):
+            total = sum(row[f"largest_contacts_{k}_n_inter_contacts_mean"] for k in kinds)
+            ax.text(i, 1.025, f"N={total:.0f}", ha="center", va="bottom",
+                    fontsize=style.tick_size, clip_on=False)
+        ax.set_ylim(0, 1.1)
+    return ax
 
 
 def plot_precision_recall(
