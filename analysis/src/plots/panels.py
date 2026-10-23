@@ -11,6 +11,10 @@ def plot_panels(
     sharex: bool = False,
     sharey: bool = False,
 ):
+    if not items:
+        raise ValueError("plot_panels requires at least one item")
+    if n_cols < 1:
+        raise ValueError("n_cols must be positive")
     n = len(items)
     n_rows = math.ceil(n / n_cols)
     fig, axes = plt.subplots(n_rows, n_cols,
