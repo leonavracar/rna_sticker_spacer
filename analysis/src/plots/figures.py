@@ -281,6 +281,55 @@ def plot_ranked_clusters(
     )
 
 
+def plot_ranked_condition(
+    df: pd.DataFrame, ax: Axes, *,
+    style: PlotStyle, species: Sequence[str] | None = None,
+    annotate_molecules: bool = False, color: str = "#4389BE",
+) -> Axes:
+    """Thesis Fig. 16: five cluster-rank bars for a *single* E_att condition.
+
+    Pure-system bars have one color. Mixture bars stack RNA-species contributions
+    normalized to the total particle count in the entire simulation.
+    """
+    from .style import RANKS
+    if len(df) != 1:
+        raise ValueError("Filter to exactly one E_att, stiffness and density first")
+    row = df.iloc[0]
+    if species is None:
+        columns = [f"rank_{r}_fraction_particles_mean" for r in RANKS]
+    else:
+        columns = [
+            f"rank_{r}_{sp}_fraction_total_particles_mean"
+            for r in RANKS for sp in species
+        ]
+    require_columns(df, columns)
+    fractions = np.asarray([row[c] for c in columns], dtype=float)
+    if not np.allclose(np.nansum(fractions), 1.0, atol=1e-3):
+        raise ValueError("Ranked-cluster material fractions must sum to one")
+    positions = np.arange(len(RANKS), dtype=float)
+    bottom = np.zeros(len(RANKS))
+    if species is None:
+        ax.bar(positions, fractions, color=color, alpha=style.stack_alpha, width=.75)
+    else:
+        for sp in species:
+            values = np.asarray([
+                row[f"rank_{r}_{sp}_fraction_total_particles_mean"] for r in RANKS
+            ], dtype=float)
+            ax.bar(positions, values, bottom=bottom,
+                   color=style.species_colors.get(sp), alpha=style.stack_alpha,
+                   width=.75, label=style.label(sp))
+            if annotate_molecules:
+                for i, rank in enumerate(RANKS):
+                    count = row[f"rank_{rank}_{sp}_n_molecules_mean"]
+                    if np.isfinite(count) and values[i] >= .04:
+                        ax.text(i, bottom[i] + values[i]/2, f"{count:.0f}",
+                                ha="center", va="center", fontsize=style.tick_size-1)
+            bottom += values
+    ax.set_xticks(positions, [style.label(r) for r in RANKS], rotation=25)
+    ax.set_ylim(0, 1.03)
+    return _format_axis(ax, style=style, xlabel="", ylabel=style.label("fraction"))
+
+
 def plot_mixture_ranked_bars(
     df: pd.DataFrame, ax: Axes, *, style: PlotStyle,
     species: Sequence[str] = ("cag10", "cag47"),
