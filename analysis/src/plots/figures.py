@@ -152,8 +152,10 @@ def plot_largest_cluster_metric(
     for pos, (_, row) in zip(positions, d.iterrows()):
         count = row[f"{annotation}_mean"]
         if np.isfinite(count):
+            text = (f"N_mol = {count:.1f}" if annotation_label == "N_mol"
+                    else f"{count:.0f} {annotation_label}")
             ax.annotate(
-                f"{count:.0f} {annotation_label}",
+                text,
                 (pos, row[f"{metric}_mean"]), xytext=(0, 6),
                 textcoords="offset points", ha="center", va="bottom",
                 fontsize=style.tick_size, color="#383838",
