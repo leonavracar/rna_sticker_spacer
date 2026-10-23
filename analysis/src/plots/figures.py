@@ -186,6 +186,11 @@ def plot_metric_points(
     else:
         sns.stripplot(**kwargs, dodge=bool(hue), jitter=style.jitter,
                       alpha=style.point_alpha)
+    values = sorted(df[x].dropna().unique())
+    ax.set_xticks(np.arange(len(values)), [
+        f"{v:g}" if isinstance(v, (int, float, np.number)) else str(v)
+        for v in values
+    ])
     return _format_axis(ax, style=style, xlabel=style.label(x),
                         ylabel=style.label(metric))
 
@@ -447,16 +452,19 @@ def plot_largest_contact_composition(
 def plot_precision_recall(
     df: pd.DataFrame, ax: Axes, *, style: PlotStyle,
     color_by: str = "E_att", threshold: float = .8,
+    vmin: float | None = None, vmax: float | None = None,
+    show_colorbar: bool = False,
 ) -> Axes:
     """Validation precision/recall quadrants; each point is one replicate."""
     require_columns(df, ["precision", "recall", color_by])
     art = ax.scatter(df["precision"], df["recall"], c=df[color_by],
-                     cmap="viridis", s=style.point_size,
+                     cmap="viridis", vmin=vmin, vmax=vmax, s=style.point_size,
                      alpha=style.point_alpha, linewidths=0)
     ax.axvline(threshold, color="#888", linestyle="--", linewidth=1)
     ax.axhline(threshold, color="#888", linestyle="--", linewidth=1)
     ax.set(xlim=(-.02, 1.02), ylim=(-.02, 1.02))
-    ax.figure.colorbar(art, ax=ax, label=style.label(color_by))
+    if show_colorbar:
+        ax.figure.colorbar(art, ax=ax, label=style.label(color_by))
     return _format_axis(ax, style=style, xlabel="Precision", ylabel="Recall")
 
 
