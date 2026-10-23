@@ -138,22 +138,30 @@ def plot_recurrence_summary(
 
 def plot_largest_cluster_metric(
     df: pd.DataFrame, ax: Axes, *, metric: str, annotation: str,
-    style: PlotStyle, annotation_label: str, color: str,
-    x: str = "E_att",
+    style: PlotStyle, annotation_label: str,
+    color: str = "#828282", x: str = "E_att",
 ) -> Axes:
-    """Thesis Fig. 18: largest-cluster observable and annotated counts."""
+    """Thesis Fig. 18: bars for largest-cluster material/degree with counts."""
     require_columns(df, [x, f"{metric}_mean", f"{annotation}_mean"])
-    plot_metric_series(df, ax, metric=metric, x=x, style=style, band="none",
-                       color=color)
-    for i, (_, record) in enumerate(df.sort_values(x).iterrows()):
-        ax.annotate(
-            f"{record[f'{annotation}_mean']:.0f}",
-            (i, record[f"{metric}_mean"]), xytext=(0, 10),
-            textcoords="offset points", ha="center", va="bottom",
-            fontsize=style.tick_size, color=color,
-        )
-    ax.margins(y=.15)
-    return ax
+    d = df.sort_values(x).dropna(subset=[x, f"{metric}_mean"])
+    if d[x].duplicated().any():
+        raise ValueError(f"Filter to one experimental series: {x} duplicated")
+    positions = np.arange(len(d), dtype=float)
+    values = d[f"{metric}_mean"].to_numpy(dtype=float)
+    ax.bar(positions, values, width=.68, color=color, alpha=.88)
+    for pos, (_, row) in zip(positions, d.iterrows()):
+        count = row[f"{annotation}_mean"]
+        if np.isfinite(count):
+            ax.annotate(
+                f"{count:.0f} {annotation_label}",
+                (pos, row[f"{metric}_mean"]), xytext=(0, 6),
+                textcoords="offset points", ha="center", va="bottom",
+                fontsize=style.tick_size, color="#383838",
+            )
+    _set_categorical_ticks(ax, d[x].tolist())
+    ax.set_ylim(0, max(values) * 1.22 if len(values) and max(values) > 0 else 1)
+    return _format_axis(ax, style=style, xlabel=style.label(x),
+                        ylabel=style.label(metric))
 
 
 def plot_metric_points(
