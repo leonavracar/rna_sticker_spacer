@@ -1,7 +1,7 @@
 # RNA simulation analysis
 
 Reproducible analysis of coarse-grained RNA simulations for single-chain
-validation, RQ1 (reentrance), RQ2 (length/patterning), and RQ3 (mixtures).
+validation, RQ1 (reentrance), RQ2 (length, with scrambled controls), and RQ3 (mixtures).
 
 The pipeline runs GSD -> accepted pairing NPZ -> molecular graph NPZ ->
 framewise measurements -> **replicate-level 10% means**. It checkpoints each
@@ -144,6 +144,22 @@ For real data, validate `replicates.csv` and `summary.csv` for a single
 parameter run before processing the full sweep. Compare selected scalar,
 ranked-cluster, and largest-cluster contact metrics against previously
 verified values using the **same final 10% frame window**.
+
+## Plotting notebooks
+
+The curated research notebooks are in [notebooks/](notebooks/README.md):
+
+- [Single-chain validation](notebooks/01_validation.ipynb)
+- [RQ1 — Reentrant clustering](notebooks/02_reentrance.ipynb)
+- [RQ2 — RNA length](notebooks/03_length.ipynb)
+- [RQ3 — CAG10/CAG47 mixtures](notebooks/04_mixtures.ipynb)
+
+The notebooks load the **wide CSVs** above, use centralized `PlotStyle`
+settings and `functools.partial` for reusable axes-first plot functions.
+Framewise-only plots are implemented separately and not run in the notebooks.
+The RQ1/RQ2 XY projections can optionally read **final GSD frames**;
+an optional PyVis network can be exported from an NPZ without GSD.
+See the [plotting guide](notebooks/README.md) for details.
 
 ## Figure mapping
 
