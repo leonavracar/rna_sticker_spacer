@@ -296,23 +296,17 @@ def _aggregate(replicates: pd.DataFrame) -> pd.DataFrame:
     )
     summary = summary.merge(trajectory_counts, on=conditions, how="left")
 
-    # One row per condition, with the metric's descriptive statistics adjacent.
-    stats = grouped[metrics].agg([
-        "mean", "std",
-        lambda series: series.quantile(0.1),
-        lambda series: series.quantile(0.9),
-    ])
-    stats.columns = [
-        f"{name}_{STATS[index]}"
-        for name, index in zip(
-            stats.columns.get_level_values(0),
-            [0 if stat == "mean" else 1 if stat == "std" else
-             2 if stat == "<lambda_0>" else 3
-             for stat in stats.columns.get_level_values(1)]
-        )
+    # Keep the calculation explicit and robust to pandas' naming of lambdas.
+    means = grouped[metrics].mean().add_suffix("_mean")
+    stds = grouped[metrics].std().add_suffix("_std")
+    p10 = grouped[metrics].quantile(0.10).add_suffix("_p10")
+    p90 = grouped[metrics].quantile(0.90).add_suffix("_p90")
+    stats = pd.concat([means, stds, p10, p90], axis=1).reset_index()
+    result = summary.merge(stats, on=conditions, how="left")
+    columns = [
+        f"{metric}_{stat}" for metric in sorted(metrics) for stat in STATS
     ]
-    stats = stats.reset_index()
-    return summary.merge(stats, on=conditions, how="left")
+    return result[conditions + ["n", "n_trajectories"] + columns]
 
 
 def export_sweep(db_path: Path, output_sweep: Path) -> tuple[Path, int]:
