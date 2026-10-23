@@ -172,35 +172,62 @@ def plot_metric_points(
     hue: str | None = None, palette: Mapping | None = None,
     kind: str = "box",
 ) -> Axes:
-    """Seaborn box/strip plot of independent replicate (not frame) measurements."""
-    import seaborn as sns
+    """Replicate-level boxplots with thesis-style neutral boxes and points."""
     require_columns(df, [x, metric] + ([hue] if hue else []))
     if kind not in ("box", "strip"):
         raise ValueError("kind must be 'box' or 'strip'")
-    kwargs = {"data": df, "x": x, "y": metric, "hue": hue, "ax": ax}
-    if palette is not None and hue is not None:
-        kwargs["palette"] = palette
-    if kind == "box":
-        sns.boxplot(**kwargs, showfliers=False, color=None if hue else "#DCE6EE",
-                    linewidth=1, width=.65)
-        sns.stripplot(**kwargs, dodge=bool(hue), color=None if hue else "#315577",
-                      alpha=style.point_alpha, size=max(2, style.point_size ** .5 / 2),
-                      jitter=style.jitter)
-        # Strip points create a redundant legend if hue is present.
-        if hue and ax.get_legend() is not None:
-            handles, labels = ax.get_legend_handles_labels()
-            n = df[hue].dropna().nunique()
-            ax.legend(handles[:n], [style.label(str(v)) for v in labels[:n]],
-                      title=style.label(hue), frameon=False,
-                      loc=style.legend_loc)
+    d = df.dropna(subset=[x, metric])
+    if d.empty:
+        raise ValueError("No nonmissing replicate values to plot")
+
+    if hue is None:
+        # Matplotlib gives exact control over box fill, median, whiskers and
+        # point jitter, matching the original MSc graph panels.
+        categories = sorted(d[x].unique())
+        arrays = [d.loc[d[x] == value, metric].to_numpy() for value in categories]
+        positions = np.arange(len(categories))
+        if kind == "box":
+            ax.boxplot(
+                arrays, positions=positions, widths=style.box_width,
+                patch_artist=True, showfliers=False,
+                boxprops={"facecolor": style.box_facecolor,
+                          "edgecolor": style.box_edgecolor, "linewidth": 1},
+                medianprops={"color": style.box_median_color, "linewidth": 1.25},
+                whiskerprops={"color": style.box_whisker_color, "linewidth": 1},
+                capprops={"color": style.box_whisker_color, "linewidth": 1},
+            )
+        rng = np.random.default_rng(42)
+        for index, values in enumerate(arrays):
+            ax.scatter(
+                index + rng.uniform(-style.jitter, style.jitter, len(values)),
+                values, s=style.box_point_size, color=style.box_point_color,
+                alpha=style.box_point_alpha, linewidths=0, zorder=3,
+            )
+        _set_categorical_ticks(ax, categories)
     else:
-        sns.stripplot(**kwargs, dodge=bool(hue), jitter=style.jitter,
-                      alpha=style.point_alpha)
-    values = sorted(df[x].dropna().unique())
-    ax.set_xticks(np.arange(len(values)), [
-        f"{v:g}" if isinstance(v, (int, float, np.number)) else str(v)
-        for v in values
-    ])
+        # Comparisons between periodic and scrambled sequences are best
+        # represented by grouped Seaborn boxes.
+        import seaborn as sns
+        kwargs = {"data": d, "x": x, "y": metric, "hue": hue, "ax": ax}
+        if palette is not None:
+            kwargs["palette"] = palette
+        if kind == "box":
+            sns.boxplot(**kwargs, showfliers=False, linewidth=1, width=.65,
+                        boxprops={"alpha": .65})
+            sns.stripplot(**kwargs, dodge=True, jitter=style.jitter,
+                          alpha=style.point_alpha, size=3,
+                          linewidth=0)
+            handles, labels = ax.get_legend_handles_labels()
+            count = d[hue].nunique()
+            if handles and ax.get_legend():
+                ax.legend(handles[:count],
+                          [style.label(str(v)) for v in labels[:count]],
+                          title=style.label(hue), loc=style.legend_loc,
+                          frameon=False)
+        else:
+            sns.stripplot(**kwargs, dodge=True, jitter=style.jitter,
+                          alpha=style.point_alpha)
+        _set_categorical_ticks(ax, sorted(d[x].unique()))
     return _format_axis(ax, style=style, xlabel=style.label(x),
                         ylabel=style.label(metric))
 
@@ -283,15 +310,17 @@ def plot_cluster_bins(
 
 def plot_ranked_clusters(
     df: pd.DataFrame, ax: Axes, *, style: PlotStyle, x: str = "E_att",
+    annotate_molecules: bool = False,
 ) -> Axes:
-    """Pure-system ranked particle material; ranks together sum to one."""
+    """Pure ranked-cluster composition; optionally label molecule counts."""
     from .style import RANKS
-    columns = [
-        f"rank_{rank}_fraction_particles_mean" for rank in RANKS
-    ]
+    columns = [f"rank_{rank}_fraction_particles_mean" for rank in RANKS]
+    counts = ([f"rank_{rank}_n_molecules_mean" for rank in RANKS]
+              if annotate_molecules else None)
     return plot_stacked_fractions(
         df, ax, x=x, columns=columns,
         labels=[style.label(rank) for rank in RANKS],
+        annotation_columns=counts,
         colors=style.rank_colors, style=style,
     )
 
