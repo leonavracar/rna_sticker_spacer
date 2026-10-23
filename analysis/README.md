@@ -74,22 +74,35 @@ analysis_results/
     └── summary.csv
 ~~~
 
-**`replicates.csv`** is a long-format table: each row is one metric for
-one independent trajectory. It contains the sweep, parameter-run folder,
-trajectory identifier, molecule-file provenance, sequence class
-(`repeat`, `scrambled`, `mixed`), CAG repeat count where applicable,
-density, E_att, stiffness, fraction of frames, metric group, metric name,
-category, species, and value. Concentrations `conc_mol_per_L` and
-`conc_nuc_per_L` use the configured length conversion (0.6 nm/unit).
+**`replicates.csv`** is **wide**: **one row per trajectory**, one column
+per scalar scientific measurement, with parameters and input provenance at the
+front. It includes `folder_name`, `traj_replicate`, `molecule_file`, E_att,
+stiffness, density, particle/molecule counts, molar concentrations, and the
+analysis window. `sequence_class`, `repeat_count`, and `scramble_id` appear
+only where meaningful; the sweep name is already part of the directory path.
 
-**`summary.csv`** groups observations within that sweep by experimental conditions,
-metric group, metric, cluster class or contact type, and species. It contains
-`mean`, `std`, `p10`, `p90`, `n` (independent units) and
-`n_trajectories`. For periodic sequences, trajectories are the units.
-For scrambled controls, trajectories of the *same scramble sequence* are
-averaged first, and each distinct scramble has equal weight. We keep the
-actual `molecule_file` in replicates.csv for traceability, not as an
-experimental grouping condition.
+For example, use `n_base_pairs`, `n_edges`, and `mean_degree` directly.
+Cluster-bin measurements use names such as
+`cluster_bin_molecule_count_monomer` and
+`cluster_bin_particle_percentage_ge_50pct`.
+Mixture outputs include `rank_largest_cag10_n_molecules`,
+`rank_largest_cag47_fraction_total_particles`,
+`largest_contacts_cag10_cag47_fraction_inter_contacts`, and
+`largest_mean_degree`. A ranked particle fraction is a fraction of **all
+particles in the simulation**, not a fraction of just the ranked cluster.
+
+**`summary.csv`** is also **wide**: **one row per condition**, grouped by RNA
+composition/length, attraction, stiffness, density, and analysis parameters.
+Each metric has `_mean`, `_std`, `_p10`, and `_p90` columns; for example
+`n_edges_mean` and `n_edges_std`. `n` counts statistically independent
+units and `n_trajectories` counts raw trajectories. For scrambled controls,
+trajectories of each *distinct scramble sequence* are averaged first, then
+all scrambles contribute equally. The identity of every scramble is kept in
+`replicates.csv`, but does not split the summary into separate conditions.
+
+The pipeline avoids redundant extra columns such as
+`inter_particle_contacts_total` (already `n_inter_contacts`) and
+`mol_contacts_total` (already `n_edges`).
 
 **All RQs use the same 10% window**, including pure-system references
 plotted beside mixtures. No old CSVs are read. Legacy per-run CSVs created
