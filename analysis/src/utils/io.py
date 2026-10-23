@@ -1,10 +1,17 @@
-from pathlib import Path
-from typing import Any, Iterator
-import json
+"""Small IO helpers for parameter files, optional trajectories and NPZ arrays."""
+
+from __future__ import annotations
+
 from contextlib import contextmanager
+import json
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Iterator
+
 import numpy as np
-import gsd.hoomd
 from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    import gsd.hoomd
 
 @contextmanager
 def as_traj(
@@ -14,6 +21,9 @@ def as_traj(
     Yield a trajectory. If a path is given, the trajectory is opened here and closed on exit.
     """
     if isinstance(traj_file, (str, Path)):
+        # The NPZ-only analyze stage must not need to import GSD.
+        import gsd.hoomd
+
         traj = gsd.hoomd.open(str(traj_file), "r")
         try:
             yield traj
@@ -74,6 +84,8 @@ def load_npz(cache_path: Path) -> dict[str, NDArray]:
     
 def get_frames(traj, fraction_last: float = 1.0) -> list[int]:
     """Return indices of the last `fraction_last` of frames (0<f<=1)."""
+    if not 0 < fraction_last <= 1:
+        raise ValueError("fraction_last must lie in (0, 1]")
     n = len(traj)
     start = int(n * (1.0 - fraction_last))
     return list(range(start, n))
