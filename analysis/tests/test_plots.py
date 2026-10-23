@@ -203,3 +203,46 @@ def test_pure_and_mixed_ranked_condition_plot_contract():
     assert len(axes[0].patches) == 5
     assert len(axes[1].patches) == 10
     plt.close(fig)
+
+
+
+def test_validation_scatter_uses_shared_discrete_attraction_colors():
+    from src.plots.figures import plot_mfe_pairing_scatter, plot_precision_recall
+    frame = pd.DataFrame({
+        "E_att": [2., 2., 4., 4.],
+        "mfe_matches": [8, 9, 11, 12],
+        "extra_pairs": [3, 2, 1, 0],
+        "precision": [.7, .8, .9, .95],
+        "recall": [.6, .7, .8, .9],
+    })
+    fig, ax = plt.subplots()
+    plot_mfe_pairing_scatter(frame, ax, style=STYLE,
+                             attraction_order=(2., 4., 8.))
+    assert {"2", "4"}.issubset(set(ax.get_legend_handles_labels()[1]))
+    plt.close(fig)
+    fig, ax = plt.subplots()
+    plot_precision_recall(frame, ax, style=STYLE,
+                          attraction_order=(2., 4., 8.))
+    assert {"2", "4"}.issubset(set(ax.get_legend_handles_labels()[1]))
+    plt.close(fig)
+
+
+def test_validation_rg_has_replicate_points_and_percentile_errorbars():
+    from src.plots.figures import plot_rg_validation
+    summary = pd.DataFrame({
+        "E_att": [2., 4.],
+        "Rg_nm_mean": [1.3, 1.7],
+        "Rg_nm_p10": [1.1, 1.5],
+        "Rg_nm_p90": [1.4, 1.9],
+    })
+    replicates = pd.DataFrame({
+        "E_att": [2., 2., 4., 4.],
+        "Rg_nm": [1.2, 1.4, 1.6, 1.8],
+    })
+    fig, ax = plt.subplots()
+    plot_rg_validation(summary, ax, replicates=replicates, style=STYLE,
+                       x_order=(2., 4.), reference_nm=1.47)
+    assert ax.get_xticks().tolist() == [0., 1.]
+    assert len(ax.collections) >= 1
+    assert len(ax.lines) >= 1
+    plt.close(fig)
