@@ -37,11 +37,11 @@ of sampled frames**. Use `--run-ids 0` to select parameter-run folder
 
 | Stage | Reads | Produces |
 | --- | --- | --- |
-| `pairing` | GSD | Accepted-pair NPZ, molecule lookup, exact GSD step indices |
+| `pairing` | GSD | Accepted-pair NPZ, molecule lookup, exact GSD steps; **single-chain Rg in nm** |
 | `graphs` | NPZ | Weighted molecular graph NPZ, plus intramolecular NPZ for mixtures |
 | `analyze` | NPZ + `params.json` | SQLite checkpoint and compiled CSVs; **no GSD reads** |
 | `all` | GSD, then NPZ | Pairing, graphs, analysis; excludes optional energy |
-| `energy` | GSD | Optional logged energies, KE per particle and single-chain Rg, summarized in SQLite |
+| `energy` | GSD | Optional logged energies and KE per particle, summarized in SQLite |
 
 `--overwrite-npz` only overwrites NPZs beneath the new output root.
 Pairing/contact-graph scientific calculations are unchanged by aggregation.
@@ -51,8 +51,11 @@ under the mirrored run directory, but is off by default.
 Single-chain analysis requires a matching ViennaRNA reference CSV. Specify
 `--viennarna-reference path/to/reference.csv` to override the configured
 reference path; relative paths are resolved against the input sweep.
-Single-chain Rg is computed by the optional `energy` stage, since geometry
-requires the original GSD frames.
+For **single-chain validation only**, Rg is calculated automatically in nm
+from unwrapped particle coordinates while the `pairing` stage is already reading
+GSD frames. The values are cached as `Rg_nm` in the pairing NPZ and averaged
+over the same final 10% in `analyze`, so `--stage analyze` never reopens GSD.
+Other research questions do not calculate Rg.
 
 ## Output
 
@@ -146,8 +149,8 @@ verified values using the **same final 10% frame window**.
 The notebooks do plotting and hypothesis tests; the pipeline produces the
 measurements and descriptive summaries:
 
-- **Validation (Figures 6–8):** MFE matches, extra pairs, precision, recall;
-  optional GSD-based Rg.
+- **Validation (Figures 6–8):** MFE matches, extra pairs, precision, recall,
+  and automatically cached single-chain Rg.
 - **RQ1 (Figures 9–12):** `cluster_bins_molecule_count`, base-pair
   intra/inter counts, edge counts/weights, mean molecule recurrence.
 - **RQ2 (Figures 13–15):** `cluster_bins_particle_percentage`,
