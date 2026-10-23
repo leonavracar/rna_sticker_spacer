@@ -26,7 +26,7 @@ REPLICATE_METADATA = [
 ]
 
 CONDITION_METADATA = [
-    "molecule_file", "sequence_class", "repeat_count", "E_att",
+    "experiment", "molecule_file", "sequence_class", "repeat_count", "E_att",
     "angle_k_ppp", "density", "n_molecules", "n_particles",
     "nm_per_sim_length_unit", "late_fraction", "min_contacts",
 ]
@@ -223,6 +223,7 @@ def _replicate_rows(db_path: Path) -> pd.DataFrame:
         row = combined.setdefault(
             identity, {field: meta.get(field) for field in REPLICATE_METADATA}
         )
+        row["experiment"] = experiment
         row.update(_checkpoint_metrics(json.loads(metrics_json)))
 
     data = pd.DataFrame(combined.values())
@@ -235,9 +236,13 @@ def _replicate_rows(db_path: Path) -> pd.DataFrame:
         data = data.drop(columns=["scramble_id"])
     if not data["sequence_class"].isin(["scrambled", "repeat"]).any():
         data = data.drop(columns=["sequence_class", "repeat_count"])
+    elif not (data["experiment"] == "length_patterning").any():
+        data = data.drop(columns=["sequence_class"])
+    if data["experiment"].nunique() == 1:
+        data = data.drop(columns=["experiment"])
 
     identifier_columns = [
-        name for name in REPLICATE_METADATA if name in data.columns
+        name for name in ["experiment", *REPLICATE_METADATA] if name in data.columns
     ]
     metric_columns = sorted(set(data.columns) - set(identifier_columns))
     return data[identifier_columns + metric_columns].sort_values(
@@ -266,7 +271,8 @@ def _aggregate(replicates: pd.DataFrame) -> pd.DataFrame:
 
     conditions = _condition_columns(replicates)
     metadata = [
-        col for col in REPLICATE_METADATA if col in replicates.columns
+        col for col in ["experiment", *REPLICATE_METADATA]
+        if col in replicates.columns
     ]
     metrics = [
         col for col in replicates.columns if col not in metadata
