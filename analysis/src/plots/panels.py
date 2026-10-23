@@ -23,6 +23,7 @@ def panels_by(
     sharex: bool = False,
     sharey: bool = False,
     title: str | None = None,
+    legend: str = "auto",
 ) -> tuple[plt.Figure, np.ndarray]:
     """Split data by one or more columns, then call plot_fn(subset, ax).
 
@@ -56,6 +57,21 @@ def panels_by(
         ))
     for ax in list(axes.flat)[len(groups):]:
         ax.set_visible(False)
+    if legend not in {"auto", "last", "none"}:
+        raise ValueError("legend must be 'auto', 'last', or 'none'")
+    if legend != "auto":
+        visible_axes = list(axes.flat)[:len(groups)]
+        handles, labels = visible_axes[0].get_legend_handles_labels()
+        for ax in visible_axes:
+            original_legend = ax.get_legend()
+            if original_legend is not None:
+                original_legend.remove()
+        if legend == "last" and handles:
+            visible_axes[-1].legend(
+                handles, labels, loc="upper left",
+                bbox_to_anchor=(1.02, 1), frameon=False,
+                fontsize=style.legend_size,
+            )
     if title:
         fig.suptitle(title)
     return fig, axes
