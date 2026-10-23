@@ -235,11 +235,6 @@ def metadata(
         else None
     )
 
-    system_id = (
-        molecule_file
-        if experiment in {"single_chain", "mixture"} or repeat_count is None
-        else f"cag{repeat_count}"
-    )
     scramble_match = re.search(r"_rep_(\d+)(?=\.|$)", molecule_file)
     scramble_id = (
         scramble_match.group(1)
@@ -259,7 +254,6 @@ def metadata(
         "source_sweep": sweep_name,
         "sequence_class": sequence_class,
         "repeat_count": repeat_count,
-        "system_id": system_id,
         "scramble_id": scramble_id,
         "E_att": params.get("E_att"),
         "angle_k_ppp": params.get("angle_k_ppp"),
