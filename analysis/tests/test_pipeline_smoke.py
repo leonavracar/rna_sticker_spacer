@@ -52,8 +52,13 @@ def case(tmp_path, experiment):
     pairing = run_pipeline.archive_path(output_run, "pairing", paths.stem)
     mol_lookup = run_pipeline.archive_path(output_run, "lookup", paths.stem)
     pairing.parent.mkdir(parents=True, exist_ok=True)
-    np.savez(pairing, frame_indices=np.array([0]), steps=np.array([1000]),
-             qi_0=qi, pi_0=pi)
+    pair_data = {
+        "frame_indices": np.array([0]), "steps": np.array([1000]),
+        "qi_0": qi, "pi_0": pi,
+    }
+    if experiment == "single_chain":
+        pair_data["Rg_nm"] = np.array([1.35])
+    np.savez(pairing, **pair_data)
     np.save(mol_lookup, lookup)
 
     config = {
@@ -99,7 +104,9 @@ def test_analyze_uses_npzs_only_and_returns_wide_metrics(tmp_path, experiment):
         assert metrics["mfe_matches"] == 1
         assert metrics["extra_pairs"] == 1
         assert metrics["precision"] == .5
+        assert metrics["Rg_nm"] == pytest.approx(1.35)
     elif experiment == "reentrance":
+        assert "Rg_nm" not in metrics
         assert metrics["n_edges"] == 1
         assert "molecule_recurrence" in result.framewise
         assert metrics["cluster_bin_molecule_count_dimer"] == .5
