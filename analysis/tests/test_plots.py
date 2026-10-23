@@ -111,3 +111,95 @@ def test_final_frame_projection_and_repeat_labels():
     assert len(x_edges) == 11
     assert repeat_count("cag47x100.json") == 47
     assert repeat_count("CAG10_scramble.json") == 10
+
+
+
+def test_eatt_series_uses_evenly_spaced_categorical_ticks():
+    from src.plots.figures import plot_metric_series, plot_contact_balance
+    source = pd.DataFrame({
+        "E_att": [1., 2., 4., 6., 8., 12., 16., 32.],
+        "n_edges_mean": [0, 1, 2, 3, 4, 5, 6, 7],
+        "n_edges_std": [1.] * 8,
+    })
+    fig, ax = plt.subplots()
+    plot_metric_series(source, ax, metric="n_edges", style=STYLE)
+    assert ax.get_xticks().tolist() == list(range(8))
+    assert [tick.get_text() for tick in ax.get_xticklabels()] == [
+        "1", "2", "4", "6", "8", "12", "16", "32"
+    ]
+    assert ax.lines[0].get_xdata().tolist() == list(range(8))
+    plt.close(fig)
+
+    contacts = pd.DataFrame({"E_att": [2., 4., 8.]})
+    for metric in ("n_base_pairs", "n_inter_contacts", "n_intra_contacts"):
+        contacts[f"{metric}_mean"] = [100., 110., 120.]
+        contacts[f"{metric}_std"] = [5., 5., 5.]
+    fig, ax = plt.subplots()
+    plot_contact_balance(contacts, ax, style=STYLE)
+    assert len(ax.lines) == 3
+    assert {line.get_label() for line in ax.lines} == {
+        "Total", "Intermolecular", "Intramolecular"
+    }
+    assert ax.get_xticks().tolist() == [0., 1., 2.]
+    plt.close(fig)
+
+
+def test_faceted_cluster_bin_legend_appears_once():
+    from src.plots.style import MOLECULE_BINS
+    source = {
+        "angle_k_ppp": [0., 2.5, 5.],
+        "E_att": [2., 2., 2.],
+    }
+    for i, c in enumerate(MOLECULE_BINS):
+        source[f"cluster_bin_molecule_count_{c}_mean"] = (
+            [1., 1., 1.] if i == 0 else [0., 0., 0.]
+        )
+    fig, axes = panels_by(
+        pd.DataFrame(source), by="angle_k_ppp",
+        plot_fn=partial(plot_cluster_bins, scheme="molecule_count", style=STYLE),
+        style=STYLE, legend="last",
+    )
+    assert sum(ax.get_legend() is not None for ax in axes.flat) == 1
+    assert axes.flat[2].get_legend() is not None
+    plt.close(fig)
+
+
+def test_thesis_largest_cluster_figure_is_categorical_bars():
+    from src.plots.figures import plot_largest_cluster_metric
+    df = pd.DataFrame({
+        "E_att": [2., 4., 8.],
+        "largest_mean_degree_mean": [5., 4., 7.],
+        "largest_n_edges_mean": [310., 653., 688.],
+    })
+    fig, ax = plt.subplots()
+    plot_largest_cluster_metric(
+        df, ax, metric="largest_mean_degree",
+        annotation="largest_n_edges", annotation_label="edges", style=STYLE,
+    )
+    assert len(ax.patches) == 3
+    assert ax.get_xticks().tolist() == [0., 1., 2.]
+    assert len(ax.texts) == 3
+    plt.close(fig)
+
+
+def test_pure_and_mixed_ranked_condition_plot_contract():
+    from src.plots.figures import plot_ranked_condition
+    from src.plots.style import RANKS
+    pure = {"E_att": [2.]}
+    mix = {"E_att": [2.]}
+    for r in RANKS:
+        pure[f"rank_{r}_fraction_particles_mean"] = [
+            1. if r == "largest" else 0.
+        ]
+        for sp in ("cag10", "cag47"):
+            mix[f"rank_{r}_{sp}_fraction_total_particles_mean"] = [
+                .5 if r == "largest" else 0.
+            ]
+            mix[f"rank_{r}_{sp}_n_molecules_mean"] = [2.]
+    fig, axes = plt.subplots(1, 2)
+    plot_ranked_condition(pd.DataFrame(pure), axes[0], style=STYLE)
+    plot_ranked_condition(pd.DataFrame(mix), axes[1], style=STYLE,
+                          species=("cag10", "cag47"), annotate_molecules=True)
+    assert len(axes[0].patches) == 5
+    assert len(axes[1].patches) == 10
+    plt.close(fig)
