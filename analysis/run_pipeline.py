@@ -148,6 +148,10 @@ def generate_pairing(
             exclude_chain=int(config["exclude_chain"]),
             stride=int(config["stride"]),
             r_opt=r_opt,
+            rg_nm_per_sim_length_unit=(
+                float(config["nm_per_sim_length_unit"])
+                if config["experiment"] == "single_chain" else None
+            ),
         )
         lookup = make_molecule_lookup_table(traj[0])
 
@@ -319,6 +323,19 @@ def analyze_trajectory(
         extra_tables: dict[str, pd.DataFrame] = {}
 
         if experiment == "single_chain":
+            if "Rg_nm" not in pairing.files:
+                raise ValueError(
+                    f"Single-chain pairing archive lacks Rg_nm: {pairing_path}. "
+                    "Regenerate pairing with --stage all --overwrite-npz."
+                )
+            frame_indices = np.asarray(pairing["frame_indices"], dtype=int)
+            rg_nm = np.asarray(pairing["Rg_nm"], dtype=float)
+            if len(rg_nm) != len(frame_indices) or not np.all(np.isfinite(rg_nm)):
+                raise ValueError(f"Invalid Rg_nm array in {pairing_path}")
+            framewise = framewise.merge(
+                pd.DataFrame({"frame": frame_indices, "Rg_nm": rg_nm}),
+                on="frame", how="left", validate="one_to_one",
+            )
             reference = Path(config["viennarna_reference_file"])
             if not reference.is_absolute():
                 reference = input_sweep / reference
@@ -467,14 +484,9 @@ def checkpoint_energy(
         frames = np.asarray(pairing["frame_indices"], dtype=np.int64)
     params = load_params_json(paths.input_run / "params.json")
     dt = float(params["dt"]) if params.get("dt") is not None else None
-    rg_unit = (
-        float(config["nm_per_sim_length_unit"])
-        if config["experiment"] == "single_chain" else None
-    )
-    data = energy_framewise(
-        paths.trajectory, frames, dt, nm_per_sim_length_unit=rg_unit
-    )
-    fields = ["E_pot", "E_sqd", "E_bond", "E_angle", "ke_per_particle", "Rg_nm"]
+    # Rg is calculated during the standard single-chain pairing pass, not here.
+    data = energy_framewise(paths.trajectory, frames, dt)
+    fields = ["E_pot", "E_sqd", "E_bond", "E_angle", "ke_per_particle"]
     available = [name for name in fields if name in data]
     values = summarize_numeric(data, float(config["late_fraction"]), available)
     info = metadata(
