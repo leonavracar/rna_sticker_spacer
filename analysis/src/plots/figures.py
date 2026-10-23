@@ -231,6 +231,8 @@ def plot_mixture_ranked_bars(
     if not np.allclose(d[fraction_columns].fillna(0).sum(axis=1), 1, atol=1e-3):
         raise ValueError("Rank/species material must sum to one per condition")
 
+    from matplotlib.patches import Patch
+    hatches = ("", "///", "xx", "..", "++", "\\\\")
     centers = np.arange(len(RANKS), dtype=float)
     width = .78 / len(conditions)
     for ci, eat in enumerate(conditions):
@@ -243,6 +245,8 @@ def plot_mixture_ranked_bars(
             )
             bars = ax.bar(xpos, values, width=width, bottom=bottom,
                           color=style.species_colors.get(sp), alpha=style.stack_alpha,
+                          hatch=hatches[ci % len(hatches)], edgecolor="#E5E7EB",
+                          linewidth=.45,
                           label=style.label(sp) if ci == 0 else None)
             if annotate_molecules:
                 counts = [
@@ -258,13 +262,23 @@ def plot_mixture_ranked_bars(
 
     ax.set_xticks(centers, [style.label(rank) for rank in RANKS], rotation=20)
     ax.set_ylim(0, 1)
-    ax.legend(title="RNA species", frameon=False, loc="upper left",
-              bbox_to_anchor=(1.01, 1), fontsize=style.legend_size)
-    # Legend for attraction groups as a short descriptive panel caption.
+    species_legend = ax.legend(
+        title="RNA species", frameon=False, loc="upper left",
+        bbox_to_anchor=(1.01, 1), fontsize=style.legend_size,
+    )
+    ax.add_artist(species_legend)
+    ax.legend(
+        handles=[
+            Patch(facecolor="#F1F4F7", edgecolor="#64748B",
+                  hatch=hatches[i % len(hatches)],
+                  label=f"E = {float(e):g}")
+            for i, e in enumerate(conditions)
+        ],
+        title=style.label("E_att"), frameon=False, loc="upper left",
+        bbox_to_anchor=(1.01, .55), fontsize=style.legend_size,
+    )
     _format_axis(ax, style=style, xlabel="Ranked-cluster material",
                  ylabel=style.label("fraction"))
-    ax.set_title("Grouped bars: " + ", ".join(f"E={float(e):g}" for e in conditions),
-                 fontsize=style.panel_title_size)
     return ax
 
 
