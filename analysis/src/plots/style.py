@@ -14,7 +14,8 @@ BIN_COLORS = (
     "#2166ac", "#67a9cf", "#d1e5f0", "#fff176",
     "#f4a582", "#d6604d", "#b2182b",
 )
-RANK_COLORS = ("#275DAD", "#55A0C8", "#A3CCDF", "#E6B86C", "#D8DCE4")
+# Ranked-component palette used in the thesis (warm ranks, neutral monomers).
+RANK_COLORS = ("#DA5966", "#EC927A", "#F4B89F", "#E7C28F", "#D8DCE4")
 ATTRACTION_COLORS = (
     "#8C6BB1", "#2D76B8", "#E99443", "#4E9B6E",
     "#C64A5B", "#8064AC", "#75564E", "#39A6B4",
@@ -104,6 +105,14 @@ class PlotStyle:
     jitter: float = 0.08
     dpi: int = 180
     cmap: str = "magma"
+    box_facecolor: str = "white"
+    box_edgecolor: str = "#444444"
+    box_median_color: str = "#2C2C2C"
+    box_whisker_color: str = "#555555"
+    box_point_color: str = "#616161"
+    box_point_alpha: float = 0.6
+    box_point_size: float = 12
+    box_width: float = 0.56
     stack_colors: tuple[str, ...] = BIN_COLORS
     rank_colors: tuple[str, ...] = RANK_COLORS
     attraction_colors: tuple[str, ...] = ATTRACTION_COLORS
