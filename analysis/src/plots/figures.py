@@ -181,21 +181,87 @@ def plot_cluster_bins(
 
 
 def plot_ranked_clusters(
-    df: pd.DataFrame, ax: Axes, *, style: PlotStyle,
-    species: str | None = None, x: str = "E_att",
+    df: pd.DataFrame, ax: Axes, *, style: PlotStyle, x: str = "E_att",
 ) -> Axes:
-    """Ranked-cluster particle material; one species or all material in a pure sweep."""
+    """Pure-system ranked particle material; ranks together sum to one."""
     from .style import RANKS
     columns = [
-        f"rank_{rank}{'_' + species if species else ''}_"
-        + ("fraction_total_particles_mean" if species else "fraction_particles_mean")
-        for rank in RANKS
+        f"rank_{rank}_fraction_particles_mean" for rank in RANKS
     ]
     return plot_stacked_fractions(
         df, ax, x=x, columns=columns,
         labels=[style.label(rank) for rank in RANKS],
         colors=style.rank_colors, style=style,
     )
+
+
+def plot_mixture_ranked_bars(
+    df: pd.DataFrame, ax: Axes, *, style: PlotStyle,
+    species: Sequence[str] = ("cag10", "cag47"),
+    conditions: Sequence[float] | None = None,
+    annotate_molecules: bool = False,
+) -> Axes:
+    """Mixture: group attraction conditions within rank, stack RNA species.
+
+    Heights are fractions of ALL system particles, not of the rank alone.
+    Sums over all rank and species combinations must equal 1 for each condition.
+    """
+    from .style import RANKS
+    if conditions is None:
+        conditions = sorted(df["E_att"].dropna().unique())
+    d = df[df["E_att"].isin(conditions)].copy()
+    require_columns(d, ["E_att"])
+    if d["E_att"].duplicated().any():
+        raise ValueError("Filter to one density and stiffness first")
+    if len(d) != len(conditions):
+        raise ValueError("One or more requested E_att conditions are absent")
+    d = d.set_index("E_att").loc[list(conditions)]
+    fraction_columns = [
+        f"rank_{rank}_{sp}_fraction_total_particles_mean"
+        for rank in RANKS for sp in species
+    ]
+    count_columns = [
+        f"rank_{rank}_{sp}_n_molecules_mean"
+        for rank in RANKS for sp in species
+    ]
+    require_columns(d, fraction_columns + (count_columns if annotate_molecules else []))
+    if not np.allclose(d[fraction_columns].fillna(0).sum(axis=1), 1, atol=1e-3):
+        raise ValueError("Rank/species material must sum to one per condition")
+
+    centers = np.arange(len(RANKS), dtype=float)
+    width = .78 / len(conditions)
+    for ci, eat in enumerate(conditions):
+        xpos = centers - .39 + (ci + .5) * width
+        bottom = np.zeros(len(RANKS))
+        for sp in species:
+            values = np.asarray(
+                [d.loc[eat, f"rank_{rank}_{sp}_fraction_total_particles_mean"]
+                 for rank in RANKS], dtype=float
+            )
+            bars = ax.bar(xpos, values, width=width, bottom=bottom,
+                          color=style.species_colors.get(sp), alpha=style.stack_alpha,
+                          label=style.label(sp) if ci == 0 else None)
+            if annotate_molecules:
+                counts = [
+                    d.loc[eat, f"rank_{rank}_{sp}_n_molecules_mean"]
+                    for rank in RANKS
+                ]
+                for xloc, height, base, count in zip(xpos, values, bottom, counts):
+                    if height > .055 and np.isfinite(count):
+                        ax.text(xloc, base + height / 2, f"{count:.0f}",
+                                ha="center", va="center",
+                                fontsize=max(6, style.tick_size - 1))
+            bottom += values
+
+    ax.set_xticks(centers, [style.label(rank) for rank in RANKS], rotation=20)
+    ax.set_ylim(0, 1)
+    ax.legend(title="RNA species", frameon=False, loc="upper left",
+              bbox_to_anchor=(1.01, 1))
+    # Legend for attraction groups as a short descriptive panel caption.
+    _format_axis(ax, style=style, xlabel="Ranked-cluster material",
+                 ylabel=style.label("fraction"))
+    ax.set_title("Grouped bars: " + ", ".join(f"E={float(e):g}" for e in conditions))
+    return ax
 
 
 def plot_largest_contact_composition(
