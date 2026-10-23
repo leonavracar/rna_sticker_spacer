@@ -122,6 +122,25 @@ The output names are **never based on the research question**; they always
 match the input sweep folder. Different sweeps stay independent, including
 the periodic and scrambled RQ2 runs, which the notebook can compare.
 
+## Validation
+
+From the repository root, run the lightweight regression tests:
+
+~~~bash
+python -m pytest analysis/tests -q
+~~~
+
+The tests cover the wide replicate and condition exports, correct weighting of
+independent scramble sequences, cluster-bin conservation, MFE matching, and
+species-resolved contacts in mixtures. The four profile smoke tests operate
+entirely on synthetic pairing/graph NPZ data and deliberately have no GSD
+trajectory file, verifying that normal analysis never opens GSD.
+
+For real data, validate `replicates.csv` and `summary.csv` for a single
+parameter run before processing the full sweep. Compare selected scalar,
+ranked-cluster, and largest-cluster contact metrics against previously
+verified values using the **same final 10% frame window**.
+
 ## Figure mapping
 
 The notebooks do plotting and hypothesis tests; the pipeline produces the
