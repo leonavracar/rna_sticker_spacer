@@ -1,6 +1,6 @@
 # Figure registry and visualization architecture
 
-**Status:** Phase 1 draft. This is an **extensible visualization plan**, not a limit to thesis figures. See [metrics.md](metrics.md) for mathematical definitions and [phase1_audit.md](phase1_audit.md) for existing code.
+**Status:** Historical figure registry and design reference. For the **implemented** notebook-first workflow, see [analysis/notebooks/README.md](../notebooks/README.md) and `analysis/src/plots/`. The notebooks use the new wide CSV exports and a uniform **final 10%** analysis window, whereas the original thesis used 20% for single-chain validation and 5% for mixtures. Thus they are updated analyses, not necessarily pixel-exact thesis reproductions.
 
 ## Scope
 
@@ -45,7 +45,7 @@ The actual figures are documented in the thesis Results `6.1–6.4 and Methods `
 
 **Important denominator distinction:** All percent *cluster-size* measures and material fractions use **total nucleotide particle count**, including RQ2 and RQ3. In Fig. 17, the plotted contact-type fraction is instead normalized to total **intermolecular contacts inside the largest cluster**; it is not a cluster-size percentage. Absolute cluster-size bins are defined by molecule count, but bin **heights** use particles (numerically identical to molecule fractions for homogeneous equal-length samples).
 
-**Window selection is experiment-specific:** single-chain 20%, reentrance 10%, repeat-length/scrambled 10%, mixtures 5%; source references for mixture comparison must preserve their own original window. Figure 14 uses trajectory/time-series data rather than a scalar late-window summary.
+**Current workflow:** all production profiles calculate replicate summaries over the final **10%** of saved frames, including RQ1, RQ2, RQ3 and single-chain validation. The table above records the **original thesis** windows where they differed. Figure 14 and other trajectory-time-series figures require framewise data: their functions reside in `analysis/src/plots/framewise.py`, but these plots are intentionally not included in the four current notebooks. RQ1 and RQ2 XY final-frame projections remain available as explicit, optional GSD reads.
 
 ## 2. More than thesis figures: an open figure catalog
 
