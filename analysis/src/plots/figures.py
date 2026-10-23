@@ -459,23 +459,89 @@ def plot_largest_contact_composition(
     return ax
 
 
+def plot_mfe_pairing_scatter(
+    df: pd.DataFrame, ax: Axes, *,
+    style: PlotStyle, x: str = "mfe_matches", y: str = "extra_pairs",
+    attraction_order: Sequence | None = None,
+) -> Axes:
+    """Thesis Fig. 6: MFE-matching versus extra pairs, with replicate dots and means."""
+    require_columns(df, [x, y, "E_att"])
+    order, _ = _categorical_axis(df, "E_att", attraction_order)
+    palette = style.attraction_palette(order)
+    for value in order:
+        group = df.loc[df["E_att"] == value].dropna(subset=[x, y])
+        if group.empty:
+            continue
+        col = palette[value]
+        ax.scatter(group[x], group[y], color=col,
+                   s=style.point_size*.8, alpha=style.point_alpha,
+                   label=f"{value:g}")
+        xmean, ymean = group[x].mean(), group[y].mean()
+        ax.plot([xmean], [ymean], marker="+", color=col,
+                markersize=15, markeredgewidth=2.2, linestyle="none")
+        ax.annotate(f"({xmean:.1f}, {ymean:.1f})",
+                    (xmean, ymean), xytext=(6, 6),
+                    textcoords="offset points", fontsize=style.tick_size-1,
+                    color=col)
+    return _format_axis(ax, style=style, xlabel=style.label(x),
+                        ylabel=style.label(y))
+
+
 def plot_precision_recall(
     df: pd.DataFrame, ax: Axes, *, style: PlotStyle,
     color_by: str = "E_att", threshold: float = .8,
-    vmin: float | None = None, vmax: float | None = None,
-    show_colorbar: bool = False,
+    attraction_order: Sequence | None = None,
 ) -> Axes:
-    """Validation precision/recall quadrants; each point is one replicate."""
+    """Thesis Fig. 7: discrete attraction colors, same colors in every panel."""
     require_columns(df, ["precision", "recall", color_by])
-    art = ax.scatter(df["precision"], df["recall"], c=df[color_by],
-                     cmap="viridis", vmin=vmin, vmax=vmax, s=style.point_size,
-                     alpha=style.point_alpha, linewidths=0)
+    order, _ = _categorical_axis(df, color_by, attraction_order)
+    palette = style.attraction_palette(order)
+    for value in order:
+        group = df.loc[df[color_by] == value]
+        if group.empty:
+            continue
+        ax.scatter(group["precision"], group["recall"], color=palette[value],
+                   s=style.point_size, alpha=style.point_alpha,
+                   label=f"{value:g}", linewidths=0)
     ax.axvline(threshold, color="#888", linestyle="--", linewidth=1)
     ax.axhline(threshold, color="#888", linestyle="--", linewidth=1)
     ax.set(xlim=(-.02, 1.02), ylim=(-.02, 1.02))
-    if show_colorbar:
-        ax.figure.colorbar(art, ax=ax, label=style.label(color_by))
     return _format_axis(ax, style=style, xlabel="Precision", ylabel="Recall")
+
+
+def plot_rg_validation(
+    summary: pd.DataFrame, ax: Axes, *, replicates: pd.DataFrame,
+    style: PlotStyle, x: str = "E_att", x_order: Sequence | None = None,
+    reference_nm: float | None = 1.47,
+) -> Axes:
+    """Thesis Fig. 8: replicate points and 10th–90th percentile intervals."""
+    require_columns(summary, [x, "Rg_nm_mean", "Rg_nm_p10", "Rg_nm_p90"])
+    require_columns(replicates, [x, "Rg_nm"])
+    d = summary.sort_values(x)
+    order, positions = _categorical_axis(d, x, x_order)
+    loc = {v: i for i, v in enumerate(order)}
+    rng = np.random.default_rng(42)
+    raw = replicates.dropna(subset=["Rg_nm", x])
+    ax.scatter(raw[x].map(loc).to_numpy(dtype=float)
+               + rng.uniform(-style.jitter, style.jitter, len(raw)),
+               raw["Rg_nm"], s=style.point_size*.65, alpha=.4,
+               color="#777", zorder=2)
+    for _, row in d.iterrows():
+        xpos = loc[row[x]]
+        mean = row["Rg_nm_mean"]
+        ax.errorbar(
+            xpos, mean,
+            yerr=[[max(0, mean-row["Rg_nm_p10"])],
+                  [max(0, row["Rg_nm_p90"]-mean)]],
+            fmt="o", color="#284F69", elinewidth=1.4, capsize=3,
+            zorder=4,
+        )
+    if reference_nm is not None:
+        ax.axhline(reference_nm, ls="--", linewidth=1,
+                   color="#B85058", label=f"Reference ({reference_nm:g} nm)")
+    _set_categorical_ticks(ax, order)
+    return _format_axis(ax, style=style, xlabel=style.label(x),
+                        ylabel=style.label("Rg_nm"))
 
 
 def make_figure(nrows: int = 1, ncols: int = 1, *,
