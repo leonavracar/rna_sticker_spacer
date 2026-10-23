@@ -246,3 +246,48 @@ def test_validation_rg_has_replicate_points_and_percentile_errorbars():
     assert len(ax.collections) >= 1
     assert len(ax.lines) >= 1
     plt.close(fig)
+
+
+
+def test_ranked_length_stacks_show_molecule_counts_and_thesis_palette():
+    from src.plots.figures import plot_ranked_clusters
+    from src.plots.style import RANK_COLORS, RANKS
+
+    # The ranked palette is ordered from warm largest clusters to grey monomers.
+    assert RANK_COLORS[0].startswith("#D")
+    assert RANK_COLORS[-1] == "#D8DCE4"
+    data = {"repeat_count": [10, 20]}
+    for rank in RANKS:
+        data[f"rank_{rank}_fraction_particles_mean"] = (
+            [.75, .6] if rank == "largest" else
+            [.25, .4] if rank == "monomers" else [0., 0.]
+        )
+        data[f"rank_{rank}_n_molecules_mean"] = (
+            [8., 6.] if rank == "largest" else
+            [24., 40.] if rank == "monomers" else [0., 0.]
+        )
+
+    fig, ax = plt.subplots()
+    plot_ranked_clusters(
+        pd.DataFrame(data), ax, style=STYLE,
+        x="repeat_count", annotate_molecules=True,
+    )
+    labels = [text.get_text() for text in ax.texts]
+    assert "8" in labels and "6" in labels
+    assert "24" in labels and "40" in labels
+    assert len(ax.patches) == len(RANKS) * 2
+    plt.close(fig)
+
+
+def test_rq1_thesis_boxplots_are_neutral_with_individual_replicates():
+    from src.plots.figures import plot_metric_points
+    df = pd.DataFrame({
+        "E_att": [1., 1., 2., 2., 4., 4.],
+        "n_edges": [2., 3., 100., 110., 200., 205.],
+    })
+    fig, ax = plt.subplots()
+    plot_metric_points(df, ax, metric="n_edges", style=STYLE)
+    assert len(ax.patches) == 3
+    assert ax.get_xticks().tolist() == [0., 1., 2.]
+    assert len(ax.collections) >= 3
+    plt.close(fig)
