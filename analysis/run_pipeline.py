@@ -491,12 +491,11 @@ def checkpoint_energy(
     )
     info["late_fraction"] = float(config["late_fraction"])
     info["min_contacts"] = int(config["min_contacts"])
-    measurements = [
-        {"metric_group": "energy", "metric": name, "category": "", "species": "",
-         "value": value}
+    measurements = {
+        name: float(value)
         for name, value in values.items()
         if np.isfinite(value)
-    ]
+    }
     save_checkpoint(
         db_path, str(config["experiment"]), paths.input_run.parent.name,
         info, measurements, part="energy",
