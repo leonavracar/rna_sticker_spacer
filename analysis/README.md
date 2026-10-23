@@ -17,7 +17,8 @@ python analysis/run_pipeline.py \
   --sweep ../validation/bulk/output_dir/52b_from_frame \
   --output-root ./analysis_results \
   --experiment mixture \
-  --stage all
+  --stage all \
+  --overwrite-npz
 ~~~
 
 To reanalyze existing NPZs **without opening GSDs**:
@@ -43,7 +44,7 @@ of sampled frames**. Use `--run-ids 0` to select parameter-run folder
 | `all` | GSD, then NPZ | Pairing, graphs, analysis; excludes optional energy |
 | `energy` | GSD | Optional logged energies and KE per particle, summarized in SQLite |
 
-`--overwrite-npz` only overwrites NPZs beneath the new output root.
+Use `--overwrite-npz` with `--stage all` for a genuinely fresh run even when the input sweep already contains cached NPZs. It only overwrites NPZs beneath the new output root; original input archives are unchanged.
 Pairing/contact-graph scientific calculations are unchanged by aggregation.
 `--save-framewise` optionally saves diagnostic time series per trajectory
 under the mirrored run directory, but is off by default.
