@@ -206,8 +206,11 @@ def compute_filtered_nlist_base_pairs_traj(
     exclude_chain: int = 3,
     stride: int = 1,
     r_opt: float = 0.5,
+    rg_nm_per_sim_length_unit: float | None = None,
 ) -> dict[str, np.ndarray]:
-    """Collect filtered particle contacts and candidate counts for sampled frames."""
+    """Collect contacts and optional single-chain Rg from the *same* GSD frame read."""
+    if rg_nm_per_sim_length_unit is not None:
+        from .single_chain import radius_of_gyration
     nlist_dict = {}
     n_frames = len(traj)
     sampled_indices = range(0, n_frames, stride)
@@ -216,10 +219,15 @@ def compute_filtered_nlist_base_pairs_traj(
     n_pre_values = []
     n_post_values = []
     steps = []
+    rg_nm = []
     molecule_lookup_table = make_molecule_lookup_table(traj[0])
+    if rg_nm_per_sim_length_unit is not None and len(np.unique(molecule_lookup_table)) != 1:
+        raise ValueError("Single-chain radius of gyration requires exactly one RNA molecule")
     for frame_idx in sampled_indices:
         frame = traj[frame_idx]
         steps.append(int(frame.configuration.step))
+        if rg_nm_per_sim_length_unit is not None:
+            rg_nm.append(radius_of_gyration(frame, rg_nm_per_sim_length_unit))
         nlist_filt, error_rate, n_pre, n_post = get_filtered_nlist_base_pairs(
             frame=frame,
             r_min=r_min,
@@ -236,6 +244,8 @@ def compute_filtered_nlist_base_pairs_traj(
         n_post_values.append(n_post)
 
     nlist_dict["steps"] = np.asarray(steps, dtype=np.int64)
+    if rg_nm_per_sim_length_unit is not None:
+        nlist_dict["Rg_nm"] = np.asarray(rg_nm, dtype=np.float64)
     nlist_dict["error_rates"] = np.asarray(ambiguity_rates)
     nlist_dict["n_pre"] = np.asarray(n_pre_values)
     nlist_dict["n_post"] = np.asarray(n_post_values)
