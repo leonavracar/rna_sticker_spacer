@@ -278,8 +278,12 @@ def plot_stacked_fractions(
             counts = d[annotation_columns[i]].to_numpy(dtype=float)
             for xpos, height, base, count in zip(positions, heights, bottom, counts):
                 if height >= annotate_min_height and np.isfinite(count):
+                    from matplotlib.colors import to_rgb
+                    rgb = to_rgb(palette[i])
+                    brightness = .2126*rgb[0] + .7152*rgb[1] + .0722*rgb[2]
                     ax.text(xpos, base + height / 2, f"{count:.0f}",
-                            ha="center", va="center", fontsize=style.tick_size - 1)
+                            ha="center", va="center", fontsize=style.tick_size - 1,
+                            color="white" if brightness < .52 else "#252525")
         bottom += heights
     ax.set_xticks(positions, [f"{v:g}" if isinstance(v, (float, int, np.number)) else str(v)
                               for v in d[x]])
