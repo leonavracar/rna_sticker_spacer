@@ -29,8 +29,7 @@ implementations.
 The notebooks never need to import HOOMD-blue. The base plotting dependencies
 are `pandas`, `numpy`, `matplotlib` and `seaborn`. The optional GSD
 projections additionally need `gsd` and `scipy`.
-The optional dashboard needs `ipywidgets`; the optional HTML molecular
-network needs `pyvis`.
+The optional HTML molecular network needs `pyvis`.
 
 ## Module layout
 
@@ -47,7 +46,6 @@ network needs `pyvis`.
   the curated notebooks**, because framewise CSVs are not exported by default
 - `src/plots/networks.py` — optional PyVis export from saved
   molecule-contact graph NPZ (standalone HTML)
-- `src/plots/explorer.py` — optional inline ipywidgets metric explorer
 - `src/plots/diagnostic.py` — older full diagnostic / RDF helpers,
   preserved separately, not part of the main plotting workflow
 
