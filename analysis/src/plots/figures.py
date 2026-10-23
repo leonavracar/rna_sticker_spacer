@@ -23,9 +23,11 @@ def _x_positions(df: pd.DataFrame, x: str) -> tuple[list, np.ndarray]:
 
 def _format_axis(ax: Axes, *, style: PlotStyle, xlabel: str, ylabel: str,
                  title: str | None = None) -> Axes:
-    ax.set(xlabel=xlabel, ylabel=ylabel)
+    ax.set_xlabel(xlabel, fontsize=style.label_size)
+    ax.set_ylabel(ylabel, fontsize=style.label_size)
+    ax.tick_params(labelsize=style.tick_size)
     if title:
-        ax.set_title(title)
+        ax.set_title(title, fontsize=style.panel_title_size)
     if style.show_grid:
         ax.grid(axis="y", alpha=style.grid_alpha)
         ax.set_axisbelow(True)
@@ -158,7 +160,8 @@ def plot_stacked_fractions(
                               for v in d[x]])
     ax.set_ylim(0, 1)
     if legend:
-        ax.legend(frameon=False, loc="upper left", bbox_to_anchor=(1.01, 1))
+        ax.legend(frameon=False, loc="upper left", bbox_to_anchor=(1.01, 1),
+                  fontsize=style.legend_size)
     return _format_axis(ax, style=style, xlabel=style.label(x),
                         ylabel=style.label("fraction"))
 
@@ -256,11 +259,12 @@ def plot_mixture_ranked_bars(
     ax.set_xticks(centers, [style.label(rank) for rank in RANKS], rotation=20)
     ax.set_ylim(0, 1)
     ax.legend(title="RNA species", frameon=False, loc="upper left",
-              bbox_to_anchor=(1.01, 1))
+              bbox_to_anchor=(1.01, 1), fontsize=style.legend_size)
     # Legend for attraction groups as a short descriptive panel caption.
     _format_axis(ax, style=style, xlabel="Ranked-cluster material",
                  ylabel=style.label("fraction"))
-    ax.set_title("Grouped bars: " + ", ".join(f"E={float(e):g}" for e in conditions))
+    ax.set_title("Grouped bars: " + ", ".join(f"E={float(e):g}" for e in conditions),
+                 fontsize=style.panel_title_size)
     return ax
 
 
