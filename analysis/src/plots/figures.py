@@ -1,9 +1,4 @@
-"""Reusable, axes-first figures for wide per-replicate/condition tables.
-
-Each function accepts (df, ax, *, ...) so functools.partial can fix plot
-settings and panels_by can supply the current subset and Matplotlib Axes.
-No function reads data, creates files, or runs simulation analysis.
-"""
+"""Matplotlib figures for the analysis tables."""
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -62,7 +57,7 @@ def plot_metric_series(
     label: str | None = None, show_points: bool = True,
     x_order: Sequence | None = None,
 ) -> Axes:
-    """Condition means on evenly spaced categorical parameter values."""
+    """Plot condition means with a variability band."""
     mean_col = f"{metric}_mean"
     lo_col, hi_col = f"{metric}_p10", f"{metric}_p90"
     if band not in ("std", "p10_p90", "none"):
@@ -172,7 +167,7 @@ def plot_metric_points(
     hue: str | None = None, palette: Mapping | None = None,
     kind: str = "box",
 ) -> Axes:
-    """Replicate-level boxplots with thesis-style neutral boxes and points."""
+    """Plot replicate distributions with optional group colors."""
     require_columns(df, [x, metric] + ([hue] if hue else []))
     if kind not in ("box", "strip"):
         raise ValueError("kind must be 'box' or 'strip'")
@@ -181,8 +176,6 @@ def plot_metric_points(
         raise ValueError("No nonmissing replicate values to plot")
 
     if hue is None:
-        # Matplotlib gives exact control over box fill, median, whiskers and
-        # point jitter, matching the original MSc graph panels.
         categories = sorted(d[x].unique())
         arrays = [d.loc[d[x] == value, metric].to_numpy() for value in categories]
         positions = np.arange(len(categories))
@@ -205,8 +198,6 @@ def plot_metric_points(
             )
         _set_categorical_ticks(ax, categories)
     else:
-        # Comparisons between periodic and scrambled sequences are best
-        # represented by grouped Seaborn boxes.
         import seaborn as sns
         kwargs = {"data": d, "x": x, "y": metric, "hue": hue, "ax": ax}
         if palette is not None:
@@ -240,11 +231,7 @@ def plot_stacked_fractions(
     annotate_min_height: float = .055,
     legend: bool = True,
 ) -> Axes:
-    """Stacked category means for bins, ranked material, or contact composition.
-
-    Uses summary.csv columns directly. Each fraction is already averaged
-    *within each trajectory* and then across independent replicates upstream.
-    """
+    """Plot stacked fractions and optional count labels."""
     if len(columns) != len(labels):
         raise ValueError("columns and labels must have equal length")
     if annotation_columns is not None and len(annotation_columns) != len(columns):
@@ -316,7 +303,7 @@ def plot_ranked_clusters(
     df: pd.DataFrame, ax: Axes, *, style: PlotStyle, x: str = "E_att",
     annotate_molecules: bool = False,
 ) -> Axes:
-    """Pure ranked-cluster composition; optionally label molecule counts."""
+    """Plot ranked cluster fractions with optional molecule counts."""
     from .style import RANKS
     columns = [f"rank_{rank}_fraction_particles_mean" for rank in RANKS]
     counts = ([f"rank_{rank}_n_molecules_mean" for rank in RANKS]
