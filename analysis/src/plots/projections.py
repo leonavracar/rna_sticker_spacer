@@ -1,13 +1,7 @@
-"""Representative FINAL-FRAME density projections for RQ1 and RQ2.
-
-This is deliberately much smaller than the old all-planes/RDF/profile
-diagnostics. Works directly from original GSD trajectories, independently
-of framewise CSVs. GSD is imported only when requested.
-"""
+"""Plot XY density projections from GSD trajectories."""
 from __future__ import annotations
 
 from pathlib import Path
-import re
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -18,10 +12,16 @@ from .style import PlotStyle
 
 def repeat_count(molecule_file: str) -> int:
     """Extract (CAG)n repeat number from filenames such as cag10x470.json."""
-    match = re.search(r"cag[_-]?(\d+)", str(molecule_file), re.IGNORECASE)
-    if not match:
+    name = Path(molecule_file).stem.lower()
+    position = name.find("cag")
+    if position < 0:
         raise ValueError(f"Cannot identify CAG repeat count in {molecule_file!r}")
-    return int(match.group(1))
+    suffix = name[position + 3:].lstrip("_-")
+    # Read the digits immediately following the CAG prefix.
+    count = suffix[:len(suffix) - len(suffix.lstrip("0123456789"))]
+    if not count:
+        raise ValueError(f"Cannot identify CAG repeat count in {molecule_file!r}")
+    return int(count)
 
 
 def projection_xy(frame, bins: int = 200, sigma: float = 0.0):
