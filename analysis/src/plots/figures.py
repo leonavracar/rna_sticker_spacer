@@ -515,7 +515,7 @@ def plot_mfe_pairing_scatter(
         offset = (
             (5, 8) if strength == strengths[0]
             else (5, 23) if strength == strengths[1]
-            else (-6, -13) if strength == strengths[3] and mean_x > 9
+            else (-6, -13) if len(strengths) > 1 and strength == strengths[-2] and mean_x > 9
             else (-6, 9) if mean_x > 9
             else (6, 8)
         )
