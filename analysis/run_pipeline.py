@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""Run RNA pairing, molecular graph and experiment-specific analyses.
-
-Input trajectories, parameters and cached NPZ files are read from --sweep.
-All newly generated files are written beneath --output-root / sweep_name.
-"""
+"""Run trajectory analysis and export sweep-level results."""
 from __future__ import annotations
 
 import argparse
@@ -104,7 +100,7 @@ def pairing_inputs(paths: TrajectoryPaths) -> tuple[Path, Path]:
 def iter_trajectories(
     input_sweep: Path, output_sweep: Path, run_ids: list[str] | None
 ) -> Iterator[TrajectoryPaths]:
-    """Select parameter runs; every trajectory file is an independent replicate."""
+    """Yield trajectories from the selected parameter runs."""
     selected = set(run_ids) if run_ids else None
     for input_run in sorted(input_sweep.iterdir()):
         if not input_run.is_dir() or not (input_run / "params.json").is_file():
@@ -482,7 +478,6 @@ def checkpoint_energy(
         frames = np.asarray(pairing["frame_indices"], dtype=np.int64)
     params = load_params_json(paths.input_run / "params.json")
     dt = float(params["dt"]) if params.get("dt") is not None else None
-    # Rg is calculated during the standard single-chain pairing pass, not here.
     data = energy_framewise(paths.trajectory, frames, dt)
     fields = ["E_pot", "E_sqd", "E_bond", "E_angle", "ke_per_particle"]
     available = [name for name in fields if name in data]
