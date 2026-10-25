@@ -51,8 +51,8 @@ def panels_by(
         ))
     for ax in list(axes.flat)[len(groups):]:
         ax.set_visible(False)
-    if legend not in {"auto", "last", "none"}:
-        raise ValueError("legend must be 'auto', 'last', or 'none'")
+    if legend not in {"auto", "last", "none", "bottom"}:
+        raise ValueError("legend must be 'auto', 'last', 'bottom', or 'none'")
     if legend != "auto":
         visible_axes = list(axes.flat)[:len(groups)]
         handles, labels = visible_axes[0].get_legend_handles_labels()
@@ -65,6 +65,14 @@ def panels_by(
                 handles, labels, loc="upper left",
                 bbox_to_anchor=(1.02, 1), frameon=False,
                 fontsize=style.legend_size,
+            )
+        elif legend == "bottom" and handles:
+            fig.set_layout_engine(None)
+            fig.subplots_adjust(bottom=.25 if nrows == 1 else .16)
+            fig.legend(
+                handles, labels, loc="lower center",
+                bbox_to_anchor=(.5, .035), ncol=min(len(handles), 7),
+                frameon=False, fontsize=style.legend_size,
             )
     if title:
         fig.suptitle(title)
