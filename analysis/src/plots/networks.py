@@ -55,6 +55,7 @@ def _frame_edges(
         ]
     return chosen, edges
 
+
 def save_pyvis_network(
     graph_npz: str | Path,
     molecule_lookup_npy: str | Path,
