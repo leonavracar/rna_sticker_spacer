@@ -40,9 +40,20 @@ def _frame_edges(
     graph_npz: str | Path, frame: int, min_contacts: int,
 ) -> tuple[int, list[tuple[int, int, int]]]:
     """Load qualifying molecular contacts for one saved frame."""
-    chosen, edges = _frame_edges(graph_npz, frame, min_contacts)
+    with np.load(graph_npz) as data:
+        frames = data["frame_indices"].astype(int)
+        if not len(frames):
+            raise ValueError("Graph archive contains no frames")
+        chosen = int(frames[frame]) if frame < 0 else int(frame)
+        if chosen not in frames:
+            raise ValueError(f"Frame {chosen} is not in the graph archive")
+        mask = (data["frame"] == chosen) & (data["n_contacts"] >= min_contacts)
+        edges = [
+            (int(a), int(b), int(w))
+            for a, b, w in zip(data["mol_a"][mask],
+                               data["mol_b"][mask], data["n_contacts"][mask])
+        ]
     return chosen, edges
-
 
 def save_pyvis_network(
     graph_npz: str | Path,
@@ -74,19 +85,7 @@ def save_pyvis_network(
     lengths = np.bincount(np.asarray(lookup, dtype=int))
     n_molecules = len(lengths)
 
-    with np.load(graph_npz) as data:
-        frames = data["frame_indices"].astype(int)
-        if not len(frames):
-            raise ValueError("Graph archive contains no frames")
-        chosen = int(frames[frame]) if frame < 0 else int(frame)
-        if chosen not in frames:
-            raise ValueError(f"Frame {chosen} is not in the graph archive")
-        mask = (data["frame"] == chosen) & (data["n_contacts"] >= min_contacts)
-        edges = [
-            (int(a), int(b), int(w))
-            for a, b, w in zip(data["mol_a"][mask],
-                               data["mol_b"][mask], data["n_contacts"][mask])
-        ]
+    chosen, edges = _frame_edges(graph_npz, frame, min_contacts)
 
     if trajectory_gsd is not None and frame == -1:
         import gsd.hoomd
