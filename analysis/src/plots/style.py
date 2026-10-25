@@ -14,17 +14,17 @@ BIN_COLORS = (
     "#2166ac", "#67a9cf", "#d1e5f0", "#fff176",
     "#f4a582", "#d6604d", "#b2182b",
 )
-# Ranked-component palette used in the thesis (warm ranks, neutral monomers).
-RANK_COLORS = ("#DA5966", "#EC927A", "#F4B89F", "#E7C28F", "#D8DCE4")
+# Ranked-cluster colors (largest to monomers).
+RANK_COLORS = ("#EF3659", "#FF695C", "#FFA08B", "#E7BC93", "#59A8D6")
 ATTRACTION_COLORS = (
     "#8C6BB1", "#2D76B8", "#E99443", "#4E9B6E",
     "#C64A5B", "#8064AC", "#75564E", "#39A6B4",
 )
-SPECIES_COLORS = {"cag10": "#409AD2", "cag47": "#E65C64"}
+SPECIES_COLORS = {"cag10": "#2FB5D9", "cag47": "#F53F58"}
 CONTACT_COLORS = {
-    "cag10_cag10": "#409AD2",
-    "cag10_cag47": "#8261AD",
-    "cag47_cag47": "#E65C64",
+    "cag10_cag10": "#2FB5D9",
+    "cag10_cag47": "#A881C2",
+    "cag47_cag47": "#F53F58",
 }
 MOLECULE_BINS = (
     "monomer", "dimer", "trimer", "4_to_9",
@@ -60,10 +60,10 @@ LABELS: dict[str, str] = {
     "largest_mean_degree": "Largest-cluster mean degree",
     "largest_n_edges": "Largest-cluster edges",
     "largest_n_molecules": "Largest-cluster molecules",
-    "largest": "Largest",
-    "second": "Second",
-    "third": "Third",
-    "other_multimers": "Other multimers",
+    "largest": "Top 1",
+    "second": "Top 2",
+    "third": "Top 3",
+    "other_multimers": "Other multi",
     "monomers": "Monomers",
     "monomer": "Monomers",
     "dimer": "Dimers",
