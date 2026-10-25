@@ -12,8 +12,8 @@ BIN_COLORS = (
 # Ranked-cluster colors (largest to monomers).
 RANK_COLORS = ("#EF3659", "#FF695C", "#FFA08B", "#E7BC93", "#59A8D6")
 ATTRACTION_COLORS = (
-    "#8C6BB1", "#2D76B8", "#E99443", "#4E9B6E",
-    "#C64A5B", "#8064AC", "#75564E", "#39A6B4",
+    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+    "#9467bd", "#8c564b", "#e377c2", "#7f7f7f",
 )
 SPECIES_COLORS = {"cag10": "#2FB5D9", "cag47": "#F53F58"}
 CONTACT_COLORS = {
