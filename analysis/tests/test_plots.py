@@ -305,7 +305,7 @@ def test_ranked_condition_pure_count_labels():
     assert len(ax.texts) == 2
     assert {text.get_text() for text in ax.texts} == {"80.0", "20.0"}
     assert [label.get_text() for label in ax.get_xticklabels()][:3] == [
-        "Top 1", "Top 2", "Top 3"
+        "top 1", "top 2", "top 3"
     ]
     plt.close(fig)
 
@@ -382,3 +382,39 @@ def test_mixture_network_colors_follow_pair_species():
                 for a, b in (("cag10", "cag10"),
                              ("cag47", "cag47"),
                              ("cag10", "cag47"))}) == 3
+
+
+
+def test_contact_legend_and_annotations_match_thesis():
+    from src.plots.figures import plot_largest_contact_composition
+
+    data = pd.DataFrame({
+        "E_att": [2., 4.],
+        "largest_contacts_cag10_cag10_fraction_inter_contacts_mean": [.1, .2],
+        "largest_contacts_cag10_cag47_fraction_inter_contacts_mean": [.4, .5],
+        "largest_contacts_cag47_cag47_fraction_inter_contacts_mean": [.5, .3],
+        "largest_contacts_cag10_cag10_n_inter_contacts_mean": [10, 20],
+        "largest_contacts_cag10_cag47_n_inter_contacts_mean": [40, 50],
+        "largest_contacts_cag47_cag47_n_inter_contacts_mean": [50, 30],
+    })
+    fig, ax = plt.subplots()
+    plot_largest_contact_composition(data, ax, style=STYLE)
+    assert ax.get_ylabel() == "Fraction of inter-contacts"
+    assert ax.get_legend_handles_labels()[1] == [
+        "CAG10-CAG10", "CAG10-CAG47", "CAG47-CAG47"
+    ]
+    assert any("N_" in label.get_text() for label in ax.texts)
+    plt.close(fig)
+
+
+def test_network_component_layout_keeps_clusters_separate():
+    pytest.importorskip("networkx")
+    from src.plots.networks import _cluster_graph, _layout_clusters
+
+    graph = _cluster_graph([(0, 1, 4), (1, 2, 3), (4, 5, 2)])
+    coords = _layout_clusters(graph)
+    assert set(coords) == {0, 1, 2, 4, 5}
+    assert np.isfinite(np.array(list(coords.values()))).all()
+    centers = [np.mean([coords[node] for node in component], axis=0)
+               for component in ({0, 1, 2}, {4, 5})]
+    assert np.linalg.norm(centers[0] - centers[1]) > 30
