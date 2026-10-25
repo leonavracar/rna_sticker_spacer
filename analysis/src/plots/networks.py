@@ -36,6 +36,14 @@ def _component_groups(n_molecules: int, edges: list[tuple[int, int, int]]):
     return graph, groups, sizes
 
 
+def _frame_edges(
+    graph_npz: str | Path, frame: int, min_contacts: int,
+) -> tuple[int, list[tuple[int, int, int]]]:
+    """Load qualifying molecular contacts for one saved frame."""
+    chosen, edges = _frame_edges(graph_npz, frame, min_contacts)
+    return chosen, edges
+
+
 def save_pyvis_network(
     graph_npz: str | Path,
     molecule_lookup_npy: str | Path,
