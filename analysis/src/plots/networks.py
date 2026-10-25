@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import networkx as nx
 import numpy as np
 
 from ..cluster_distribution import ranked_components
@@ -43,6 +42,8 @@ def _frame_edges(
 
 def _component_groups(n_molecules: int, edges: list[tuple[int, int, int]]):
     """Return the contact graph, component classes and component sizes."""
+    import networkx as nx
+
     graph = nx.Graph()
     graph.add_nodes_from(range(n_molecules))
     graph.add_weighted_edges_from(edges)
@@ -60,6 +61,8 @@ def _component_groups(n_molecules: int, edges: list[tuple[int, int, int]]):
 
 def _rank_members(graph: nx.Graph, lengths: np.ndarray) -> dict[str, set[int]]:
     """Rank connected components by particle count, as in the cluster plots."""
+    import networkx as nx
+
     components = [np.asarray(sorted(c), dtype=int)
                   for c in nx.connected_components(graph)]
     return {rank: set(ids.tolist()) for rank, ids in ranked_components(components, lengths)}
@@ -137,6 +140,7 @@ def save_pyvis_network(
     Connected components are ranked by their nucleotide counts.
     """
     from pyvis.network import Network
+    import networkx as nx
 
     if min_contacts < 1:
         raise ValueError("min_contacts must be positive")
