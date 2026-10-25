@@ -512,9 +512,17 @@ def plot_mfe_pairing_scatter(
         mean_x, mean_y = group[[x, y]].mean()
         ax.scatter(mean_x, mean_y, s=90, marker="X", color=color,
                    edgecolor="#242424", linewidth=1.1, zorder=5)
+        offset = (
+            (5, 8) if strength == strengths[0]
+            else (5, 23) if strength == strengths[1]
+            else (-6, -13) if strength == strengths[3] and mean_x > 9
+            else (-6, 9) if mean_x > 9
+            else (6, 8)
+        )
         ax.annotate(
             f"({mean_x:.1f}, {mean_y:.1f})",
-            (mean_x, mean_y), xytext=(6, 5),
+            (mean_x, mean_y), xytext=offset,
+            ha="right" if mean_x > 9 else "left",
             textcoords="offset points", fontsize=8, color="#303030",
         )
     ax.axhline(0, color="#53BCE7", linewidth=.9, linestyle="--")
