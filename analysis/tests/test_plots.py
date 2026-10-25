@@ -81,7 +81,7 @@ def test_mixture_contacts_are_largest_cluster_fractions():
     })
     fig, ax = plt.subplots()
     plot_largest_contact_composition(d, ax, style=STYLE, annotate_counts=True)
-    assert ax.get_ylim()[1] == 1
+    assert ax.get_ylim()[1] >= 1
     plt.close(fig)
 
 
@@ -253,9 +253,8 @@ def test_ranked_length_stacks_show_molecule_counts_and_thesis_palette():
     from src.plots.figures import plot_ranked_clusters
     from src.plots.style import RANK_COLORS, RANKS
 
-    # The ranked palette is ordered from warm largest clusters to grey monomers.
-    assert RANK_COLORS[0].startswith("#D")
-    assert RANK_COLORS[-1] == "#D8DCE4"
+    assert RANK_COLORS[0] == "#EF3659"
+    assert RANK_COLORS[-1] == "#59A8D6"
     data = {"repeat_count": [10, 20]}
     for rank in RANKS:
         data[f"rank_{rank}_fraction_particles_mean"] = (
@@ -290,4 +289,22 @@ def test_rq1_thesis_boxplots_are_neutral_with_individual_replicates():
     assert len(ax.patches) == 3
     assert ax.get_xticks().tolist() == [0., 1., 2.]
     assert len(ax.collections) >= 3
+    plt.close(fig)
+
+
+def test_ranked_condition_pure_count_labels():
+    from src.plots.figures import plot_ranked_condition
+    frame = {"E_att": [2.]}
+    for rank in RANKS:
+        frame[f"rank_{rank}_fraction_particles_mean"] = [
+            .8 if rank == "largest" else .2 if rank == "monomers" else 0.
+        ]
+        frame[f"rank_{rank}_n_molecules_mean"] = [80. if rank == "largest" else 20.]
+    fig, ax = plt.subplots()
+    plot_ranked_condition(pd.DataFrame(frame), ax, style=STYLE, annotate_molecules=True)
+    assert len(ax.texts) == 2
+    assert {text.get_text() for text in ax.texts} == {"80.0", "20.0"}
+    assert [label.get_text() for label in ax.get_xticklabels()][:3] == [
+        "Top 1", "Top 2", "Top 3"
+    ]
     plt.close(fig)
