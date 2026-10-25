@@ -230,6 +230,7 @@ def plot_stacked_fractions(
     style: PlotStyle, colors: Sequence[str] | None = None,
     annotation_columns: Sequence[str] | None = None,
     annotate_min_height: float = .055,
+    annotation_text_color: str | None = None,
     legend: bool = True,
 ) -> Axes:
     """Plot stacked fractions and optional count labels."""
@@ -271,7 +272,8 @@ def plot_stacked_fractions(
                     brightness = .2126*rgb[0] + .7152*rgb[1] + .0722*rgb[2]
                     ax.text(xpos, base + height / 2, f"{count:.0f}",
                             ha="center", va="center", fontsize=style.tick_size - 1,
-                            color="white" if brightness < .52 else "#252525")
+                            color=(annotation_text_color if annotation_text_color
+                                   else "white" if brightness < .52 else "#252525"))
         bottom += heights
     ax.set_xticks(positions, [f"{v:g}" if isinstance(v, (float, int, np.number)) else str(v)
                               for v in d[x]])
@@ -361,16 +363,20 @@ def plot_ranked_condition(
             ], dtype=float)
             ax.bar(positions, values, bottom=bottom,
                    color=style.species_colors[sp], alpha=style.stack_alpha,
-                   width=.72, label=style.label(sp))
-            if annotate_molecules:
-                for i, rank in enumerate(RANKS):
-                    count = row[f"rank_{rank}_{sp}_n_molecules_mean"]
-                    if np.isfinite(count) and values[i] > .04:
-                        ax.text(i, bottom[i] + values[i]/2,
-                                f"{count:.0f}", ha="center", va="center",
-                                fontsize=style.tick_size-1,
-                                color="#202020")
+                   width=.72, label=sp.upper())
             bottom += values
+        if annotate_molecules:
+            for i, rank in enumerate(RANKS):
+                for j, sp in enumerate(species):
+                    count = row[f"rank_{rank}_{sp}_n_molecules_mean"]
+                    if np.isfinite(count):
+                        ax.annotate(
+                            f"{count:.1f}", (positions[i], bottom[i]),
+                            xytext=(0, 5 + 12*j), textcoords="offset points",
+                            ha="center", va="bottom",
+                            color=style.species_colors[sp],
+                            fontsize=style.tick_size,
+                        )
     ax.set_xticks(positions, [style.label(r) for r in RANKS], rotation=28)
     ax.set_ylim(0, 1.15 if annotate_molecules else 1.03)
     return _format_axis(ax, style=style, xlabel="", ylabel=style.label("fraction"))
@@ -475,8 +481,9 @@ def plot_largest_contact_composition(
     plot_stacked_fractions(
         df, ax, columns=columns, x=x,
         annotation_columns=annotations, style=style,
-        labels=["10–10", "10–47", "47–47"],
+        labels=["CAG10-CAG10", "CAG10-CAG47", "CAG47-CAG47"],
         colors=[style.contact_colors[k] for k in kinds],
+        annotation_text_color="white",
     )
     if annotate_total:
         require_columns(df, [
@@ -484,9 +491,11 @@ def plot_largest_contact_composition(
         ])
         for i, (_, row) in enumerate(df.sort_values(x).iterrows()):
             total = sum(row[f"largest_contacts_{k}_n_inter_contacts_mean"] for k in kinds)
-            ax.text(i, 1.025, f"N={total:.0f}", ha="center", va="bottom",
-                    fontsize=style.tick_size, clip_on=False)
-        ax.set_ylim(0, 1.13)
+            ax.text(i, 1.04, rf"$N_{{\mathrm{{inter}}}} = {total:.0f}$",
+                    ha="center", va="bottom",
+                    fontsize=style.label_size, clip_on=False)
+        ax.set_ylim(0, 1.19)
+    ax.set_ylabel("Fraction of inter-contacts")
     return ax
 
 
