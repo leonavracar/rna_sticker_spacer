@@ -5,8 +5,6 @@ from pathlib import Path
 
 import numpy as np
 
-from .style import PlotStyle
-
 NODE_COLORS = {"cag10": "#56A9D5", "cag47": "#F05252"}
 EDGE_COLORS = {
     "cag10_cag10": "#56A9D5",
@@ -56,7 +54,6 @@ def save_pyvis_network(
     graph_npz: str | Path,
     molecule_lookup_npy: str | Path,
     output_html: str | Path, *,
-    style: PlotStyle,
     frame: int = -1,
     min_contacts: int = 2,
     species_by_length: dict[int, str] | None = None,
