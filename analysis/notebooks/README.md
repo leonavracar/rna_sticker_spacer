@@ -96,9 +96,11 @@ projection reproduces the **representative final XY frame**, not pooled
 densities, 1D profiles or RDFs. Both plots use the same code and shared
 color normalization across the grid.
 
-RQ3 includes optional `EXPORT_PYVIS = False`. It creates an undirected,
-species-colored, contact-weighted interactive HTML directly from the saved
-graph NPZ and molecule lookup. No extra framewise CSV is required.
+RQ3 exports one standalone HTML network per attraction strength
+(`E_att = 2, 4, 8`) to `analysis_results/52b_from_frame/networks/clusters/`.
+Each network uses the final cached trajectory frame, excludes unconnected
+molecules, colors RNA species by node and contact type by edge, and keeps
+physics disabled. Set `EXPORT_PYVIS = False` to skip this step.
 
 Optional framewise trace helpers remain in `src/plots/framewise.py` and are
 **not included in the four notebooks**.
