@@ -89,7 +89,8 @@ def _contact_type(species_a: str, species_b: str) -> str:
 
 
 def _legend(style: PlotStyle, title: str, frame: int,
-            molecule_count: int, edge_count: int) -> str:
+            molecule_count: int, edge_count: int,
+            rank_summary: list[str]) -> str:
     """Render the color key above the network."""
     species = style.species_colors
     contacts = style.contact_colors
@@ -113,7 +114,9 @@ def _legend(style: PlotStyle, title: str, frame: int,
         f'{bond(contacts["cag10_cag10"])}10–10&nbsp;&nbsp;'
         f'{bond(contacts["cag10_cag47"])}10–47&nbsp;&nbsp;'
         f'{bond(contacts["cag47_cag47"])}47–47'
-        '</div>'
+        + (('<hr style="border:0;border-top:1px solid #ddd">'
+            + '<br>'.join(rank_summary)) if rank_summary else '')
+        + '</div>'
     )
 
 
@@ -217,10 +220,16 @@ def save_pyvis_network(
     net.write_html(str(output), open_browser=False)
     html = output.read_text(encoding="utf-8")
     title = "All clusters" if rank == "all" else RANK_LABELS[rank]
+    total_particles = int(lengths.sum())
+    rank_summary = [
+        f"{RANK_LABELS[key]}: {len(members)} molecules, "
+        f"{sum(int(lengths[i]) for i in members) / total_particles:.0%} particles"
+        for key, members in ranked.items() if members
+    ] if rank == "all" else []
     html = html.replace(
         "</body>",
         _legend(style, title, chosen, graph.number_of_nodes(),
-                graph.number_of_edges()) + "\n</body>",
+                graph.number_of_edges(), rank_summary) + "\n</body>",
     )
     output.write_text(html, encoding="utf-8")
     return output
