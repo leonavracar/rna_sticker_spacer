@@ -377,7 +377,7 @@ def plot_ranked_condition(
                             color=style.species_colors[sp],
                             fontsize=style.tick_size,
                         )
-    ax.set_xticks(positions, [style.label(r) for r in RANKS], rotation=28)
+    ax.set_xticks(positions, [style.label(r).lower() for r in RANKS], rotation=28)
     ax.set_ylim(0, 1.15 if annotate_molecules else 1.03)
     return _format_axis(ax, style=style, xlabel="", ylabel=style.label("fraction"))
 
