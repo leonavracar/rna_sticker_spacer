@@ -1,4 +1,4 @@
-"""Small, predictable DataFrame helpers for the wide analysis CSV schema."""
+"""Load, filter and reshape analysis tables."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,7 +8,7 @@ import pandas as pd
 
 
 def load_sweep(output_root: str | Path, sweep: str, kind: str = "replicates") -> pd.DataFrame:
-    """Load CSV from the exact sweep name; never guess research-question folders."""
+    """Load the replicate or condition summary CSV for a sweep."""
     if kind not in ("replicates", "summary"):
         raise ValueError("kind must be 'replicates' or 'summary'")
     if Path(sweep).name != sweep or sweep in (".", ".."):
@@ -45,7 +45,7 @@ def melt_metrics(
     df: pd.DataFrame, metrics: Sequence[str],
     id_vars: Sequence[str] = ("E_att", "angle_k_ppp"),
 ) -> pd.DataFrame:
-    """Turn only selected wide columns into tidy data for Seaborn, on demand."""
+    """Convert selected metric columns to long format."""
     require_columns(df, [*id_vars, *metrics])
     return df.melt(
         id_vars=list(id_vars), value_vars=list(metrics),
@@ -54,11 +54,7 @@ def melt_metrics(
 
 
 def independent_units(df: pd.DataFrame) -> pd.DataFrame:
-    """Average repeated trajectories of the same scrambled RNA before testing.
-
-    Keeps one row per trajectory for periodic RNA and one row per independently
-    scrambled sequence for scrambled RNA, per experimental parameter condition.
-    """
+    """Average trajectories for each scrambled sequence and condition."""
     if "sequence_class" not in df or not df["sequence_class"].eq("scrambled").any():
         return df.copy()
     require_columns(df, ["molecule_file", "folder_name", "traj_replicate"])
@@ -71,7 +67,6 @@ def independent_units(df: pd.DataFrame) -> pd.DataFrame:
     ]
     scrambled = df[df["sequence_class"].eq("scrambled")]
     rest = df[~df["sequence_class"].eq("scrambled")]
-    # Numeric measurements only: no categorical run/trajectory IDs included.
     numeric = [
         col for col in scrambled.select_dtypes(include="number")
         if col not in identifiers
@@ -83,7 +78,7 @@ def independent_units(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def find_project_root(start: str | Path | None = None) -> Path:
-    """Discover the checkout from inside Jupyter, without hardcoded HPC paths."""
+    """Find the repository root from the working directory."""
     start = Path.cwd() if start is None else Path(start)
     for path in (start.resolve(), *start.resolve().parents):
         if (path / "analysis" / "src" / "plots" / "style.py").is_file():
