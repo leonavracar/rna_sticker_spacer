@@ -18,8 +18,8 @@ def panels_by(
     plot_fn: Callable[[pd.DataFrame, plt.Axes], Any],
     style: PlotStyle,
     ncols: int = 3,
-    width: float = 4.5,
-    height: float = 3.4,
+    width: float = 4.1,
+    height: float = 3.0,
     sharex: bool = False,
     sharey: bool = False,
     title: str | None = None,
@@ -73,11 +73,13 @@ def panels_by(
             )
         elif legend == "bottom" and handles:
             fig.set_layout_engine(None)
-            fig.subplots_adjust(bottom=.25 if nrows == 1 else .16)
+            fig.subplots_adjust(bottom=.29 if nrows == 1 else .19,
+                                wspace=.18, hspace=.25)
             fig.legend(
                 handles, labels, loc="lower center",
                 bbox_to_anchor=(.5, .035), ncol=min(len(handles), 7),
-                frameon=False, fontsize=style.legend_size,
+                frameon=True, fancybox=True, framealpha=.96,
+                edgecolor="#D5D5D5", fontsize=style.legend_size,
             )
     if title:
         fig.suptitle(title)
