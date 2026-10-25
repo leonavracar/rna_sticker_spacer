@@ -1,4 +1,4 @@
-"""Small axes-first multipanel utility; works naturally with functools.partial."""
+"""Arrange scientific plots into panels."""
 from __future__ import annotations
 
 import math
@@ -25,13 +25,7 @@ def panels_by(
     title: str | None = None,
     legend: str = "auto",
 ) -> tuple[plt.Figure, np.ndarray]:
-    """Split data by one or more columns, then call plot_fn(subset, ax).
-
-    Example:
-        from functools import partial
-        plot = partial(plot_metric_series, metric="n_edges", style=style)
-        fig, axes = panels_by(summary, by="angle_k_ppp", plot_fn=plot, style=style)
-    """
+    """Draw one panel for each group in the data."""
     if ncols < 1:
         raise ValueError("ncols must be positive")
     columns = [by] if isinstance(by, str) else list(by)
@@ -82,7 +76,7 @@ def plot_panels(items: list, plot_fn, title_fn=str,
                 figsize_per_panel: tuple[float, float] = (4., 4.),
                 suptitle: str | None = None,
                 sharex: bool = False, sharey: bool = False):
-    """Backward-compatible diagnostic panel utility for arbitrary objects."""
+    """Draw panels from a list of inputs."""
     if not items or n_cols < 1:
         raise ValueError("Must supply items and n_cols >= 1")
     ncols = min(n_cols, len(items))
