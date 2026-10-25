@@ -383,3 +383,17 @@ def test_rg_frame_intervals_use_last_twenty_percent(tmp_path):
     assert summary.iloc[0]["Rg_nm_mean"] == pytest.approx(2.)
     assert summary.iloc[0]["Rg_nm_p10"] == pytest.approx(1.2)
     assert summary.iloc[0]["Rg_nm_p90"] == pytest.approx(2.8)
+
+
+
+def test_mixture_network_colors_follow_pair_species():
+    from src.plots.networks import _contact_type
+
+    assert _contact_type("cag10", "cag10") == "cag10_cag10"
+    assert _contact_type("cag47", "cag47") == "cag47_cag47"
+    assert _contact_type("cag10", "cag47") == "cag10_cag47"
+    assert _contact_type("cag47", "cag10") == "cag10_cag47"
+    assert len({STYLE.contact_colors[_contact_type(a, b)]
+                for a, b in (("cag10", "cag10"),
+                             ("cag47", "cag47"),
+                             ("cag10", "cag47"))}) == 3
