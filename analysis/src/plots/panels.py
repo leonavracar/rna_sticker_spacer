@@ -56,6 +56,11 @@ def panels_by(
     if legend != "auto":
         visible_axes = list(axes.flat)[:len(groups)]
         handles, labels = visible_axes[0].get_legend_handles_labels()
+        unique = dict(zip(labels, handles))
+        labels = list(unique)
+        handles = list(unique.values())
+        labels = [style.label(label) if label in ("repeat", "scrambled")
+                  else label for label in labels]
         for ax in visible_axes:
             original_legend = ax.get_legend()
             if original_legend is not None:
