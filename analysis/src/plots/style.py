@@ -1,9 +1,4 @@
-"""Shared, notebook-friendly scientific figure styling.
-
-Plots accept an explicit PlotStyle; notebook authors can override a handful of
-settings with dataclasses.replace(style, ...), or use functools.partial.
-No global rcParams are modified on import.
-"""
+"""Style settings and labels shared by the plotting functions."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -87,7 +82,7 @@ LABELS: dict[str, str] = {
 
 @dataclass(frozen=True)
 class PlotStyle:
-    """Single immutable style shared between Matplotlib/Seaborn plot functions."""
+    """Plot colors, sizes and labels."""
     font_size: float = 10
     title_size: float = 13
     panel_title_size: float = 11
@@ -144,7 +139,6 @@ class PlotStyle:
     def label(self, field: str) -> str:
         if field in self.label_map:
             return self.label_map[field]
-        # A column named n_edges_mean still describes the n_edges metric.
         for suffix in ("_mean", "_std", "_p10", "_p90"):
             if field.endswith(suffix):
                 return self.label(field[:-len(suffix)])
