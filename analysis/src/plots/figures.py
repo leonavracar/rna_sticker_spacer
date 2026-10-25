@@ -334,11 +334,7 @@ def plot_ranked_condition(
     style: PlotStyle, species: Sequence[str] | None = None,
     annotate_molecules: bool = False, color: str = "#4389BE",
 ) -> Axes:
-    """Thesis Fig. 16: five cluster-rank bars for a *single* E_att condition.
-
-    Pure-system bars have one color. Mixture bars stack RNA-species contributions
-    normalized to the total particle count in the entire simulation.
-    """
+    """Plot ranked-cluster particle fractions for one condition."""
     from .style import RANKS
     if len(df) != 1:
         raise ValueError("Filter to exactly one E_att, stiffness and density first")
@@ -357,24 +353,38 @@ def plot_ranked_condition(
     positions = np.arange(len(RANKS), dtype=float)
     bottom = np.zeros(len(RANKS))
     if species is None:
-        ax.bar(positions, fractions, color=color, alpha=style.stack_alpha, width=.75)
+        ax.bar(positions, fractions, color=color, alpha=style.stack_alpha, width=.72)
+        if annotate_molecules:
+            require_columns(df, [f"rank_{r}_n_molecules_mean" for r in RANKS])
+            for i, rank in enumerate(RANKS):
+                count = row[f"rank_{rank}_n_molecules_mean"]
+                if np.isfinite(count) and fractions[i] > .005:
+                    ax.text(i, fractions[i] + .025, f"{count:.1f}",
+                            ha="center", va="bottom", color=color,
+                            fontsize=style.tick_size - 1)
     else:
+        require_columns(
+            df, [f"rank_{r}_{sp}_n_molecules_mean"
+                 for r in RANKS for sp in species] if annotate_molecules else [],
+        )
         for sp in species:
             values = np.asarray([
                 row[f"rank_{r}_{sp}_fraction_total_particles_mean"] for r in RANKS
             ], dtype=float)
             ax.bar(positions, values, bottom=bottom,
-                   color=style.species_colors.get(sp), alpha=style.stack_alpha,
-                   width=.75, label=style.label(sp))
+                   color=style.species_colors[sp], alpha=style.stack_alpha,
+                   width=.72, label=style.label(sp))
             if annotate_molecules:
                 for i, rank in enumerate(RANKS):
                     count = row[f"rank_{rank}_{sp}_n_molecules_mean"]
-                    if np.isfinite(count) and values[i] >= .04:
-                        ax.text(i, bottom[i] + values[i]/2, f"{count:.0f}",
-                                ha="center", va="center", fontsize=style.tick_size-1)
+                    if np.isfinite(count) and values[i] > .005:
+                        ax.text(i, bottom[i] + values[i] + .015,
+                                f"{count:.1f}", ha="center", va="bottom",
+                                fontsize=style.tick_size-1,
+                                color=style.species_colors[sp])
             bottom += values
-    ax.set_xticks(positions, [style.label(r) for r in RANKS], rotation=25)
-    ax.set_ylim(0, 1.03)
+    ax.set_xticks(positions, [style.label(r) for r in RANKS], rotation=28)
+    ax.set_ylim(0, 1.15 if annotate_molecules else 1.03)
     return _format_axis(ax, style=style, xlabel="", ylabel=style.label("fraction"))
 
 
@@ -488,7 +498,7 @@ def plot_largest_contact_composition(
             total = sum(row[f"largest_contacts_{k}_n_inter_contacts_mean"] for k in kinds)
             ax.text(i, 1.025, f"N={total:.0f}", ha="center", va="bottom",
                     fontsize=style.tick_size, clip_on=False)
-        ax.set_ylim(0, 1.1)
+        ax.set_ylim(0, 1.13)
     return ax
 
 
@@ -497,7 +507,7 @@ def plot_mfe_pairing_scatter(
     style: PlotStyle, x: str = "mfe_matches", y: str = "extra_pairs",
     attraction_order: Sequence | None = None,
 ) -> Axes:
-    """Thesis Fig. 6: MFE-matching versus extra pairs, with replicate dots and means."""
+    """Plot simulated MFE matches against extra base pairs."""
     require_columns(df, [x, y, "E_att"])
     order, _ = _categorical_axis(df, "E_att", attraction_order)
     palette = style.attraction_palette(order)
@@ -525,7 +535,7 @@ def plot_precision_recall(
     color_by: str = "E_att", threshold: float = .8,
     attraction_order: Sequence | None = None,
 ) -> Axes:
-    """Thesis Fig. 7: discrete attraction colors, same colors in every panel."""
+    """Plot precision and recall by attraction strength."""
     require_columns(df, ["precision", "recall", color_by])
     order, _ = _categorical_axis(df, color_by, attraction_order)
     palette = style.attraction_palette(order)
@@ -547,18 +557,22 @@ def plot_rg_validation(
     style: PlotStyle, x: str = "E_att", x_order: Sequence | None = None,
     reference_nm: float | None = 1.47,
 ) -> Axes:
-    """Thesis Fig. 8: replicate points and 10th–90th percentile intervals."""
+    """Plot replicate radii and 10th–90th percentile intervals."""
     require_columns(summary, [x, "Rg_nm_mean", "Rg_nm_p10", "Rg_nm_p90"])
     require_columns(replicates, [x, "Rg_nm"])
     d = summary.sort_values(x)
     order, positions = _categorical_axis(d, x, x_order)
     loc = {v: i for i, v in enumerate(order)}
     rng = np.random.default_rng(42)
+    palette = style.attraction_palette(order)
     raw = replicates.dropna(subset=["Rg_nm", x])
-    ax.scatter(raw[x].map(loc).to_numpy(dtype=float)
-               + rng.uniform(-style.jitter, style.jitter, len(raw)),
-               raw["Rg_nm"], s=style.point_size*.65, alpha=.4,
-               color="#777", zorder=2)
+    for strength, group in raw.groupby(x):
+        ax.scatter(
+            group[x].map(loc).to_numpy(dtype=float)
+            + rng.uniform(-style.jitter, style.jitter, len(group)),
+            group["Rg_nm"], s=style.point_size*.65, alpha=.38,
+            color=palette[strength], zorder=2,
+        )
     for _, row in d.iterrows():
         xpos = loc[row[x]]
         mean = row["Rg_nm_mean"]
@@ -566,7 +580,7 @@ def plot_rg_validation(
             xpos, mean,
             yerr=[[max(0, mean-row["Rg_nm_p10"])],
                   [max(0, row["Rg_nm_p90"]-mean)]],
-            fmt="o", color="#284F69", elinewidth=1.4, capsize=3,
+            fmt="o", color=palette[row[x]], elinewidth=1.4, capsize=3,
             zorder=4,
         )
     if reference_nm is not None:
