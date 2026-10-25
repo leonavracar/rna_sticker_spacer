@@ -91,6 +91,7 @@ def load_rg_frames(
     output_root: str | Path, sweep: str, *,
     late_fraction: float = .20,
     input_sweep: str | Path | None = None,
+    density: float | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Summarize the late-frame Rg distribution stored in pairing archives."""
     import numpy as np
@@ -98,6 +99,8 @@ def load_rg_frames(
     if not 0 < late_fraction <= 1:
         raise ValueError("late_fraction must be in (0, 1]")
     trajectories = load_sweep(output_root, sweep, "replicates")
+    if density is not None:
+        trajectories = filter_rows(trajectories, density=density)
     roots = [Path(output_root) / sweep]
     if input_sweep is not None:
         roots.append(Path(input_sweep))
@@ -114,7 +117,9 @@ def load_rg_frames(
             if "Rg_nm" not in saved:
                 raise KeyError(f"No Rg_nm data in {archive}")
             radii = np.asarray(saved["Rg_nm"], dtype=float)
-        radii = radii[max(0, len(radii) - int(np.ceil(len(radii) * late_fraction))):]
+        if not len(radii):
+            raise ValueError(f"No Rg frames in {archive}")
+        radii = radii[-int(np.ceil(len(radii) * late_fraction)):]
         records.append({
             "angle_k_ppp": row.angle_k_ppp,
             "E_att": row.E_att,
