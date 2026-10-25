@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
-import re
 import sys
 from typing import Any, Iterator
 
@@ -239,11 +238,10 @@ def metadata(
         else None
     )
 
-    scramble_match = re.search(r"_rep_(\d+)(?=\.|$)", molecule_file)
-    scramble_id = (
-        scramble_match.group(1)
-        if sequence_class == "scrambled" and scramble_match else None
-    )
+    suffix = Path(molecule_file).stem.rsplit("_rep_", 1)[-1]
+    scramble_id = (suffix if sequence_class == "scrambled"
+                   and "_rep_" in Path(molecule_file).stem
+                   and suffix.isdigit() else None)
 
     concentrations = concentrations_from_density(
         density=density,
