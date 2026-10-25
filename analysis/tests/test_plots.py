@@ -327,38 +327,23 @@ def test_network_uses_last_saved_trajectory_frame(tmp_path):
     assert edges == [(0, 2, 3)]
 
 
-def test_component_size_classification():
+def test_cluster_network_excludes_monomers():
     pytest.importorskip("networkx")
-    from src.plots.networks import _component_groups, COMPONENT_COLORS
+    from src.plots.networks import _cluster_graph
 
-    graph, groups, sizes = _component_groups(
-        8,
-        [(0, 1, 2), (1, 2, 3), (2, 3, 5), (3, 4, 2), (5, 6, 4)],
-    )
-    assert groups[0] == "large_cluster"
-    assert sizes[0] == 5
-    assert groups[5] == "dimer"
-    assert groups[7] == "monomer"
-    assert graph.number_of_edges() == 5
-    assert COMPONENT_COLORS["large_cluster"] != COMPONENT_COLORS["monomer"]
+    graph = _cluster_graph([(0, 1, 2), (1, 2, 4), (5, 6, 3)])
+    assert set(graph.nodes) == {0, 1, 2, 5, 6}
+    assert 3 not in graph and 4 not in graph and 7 not in graph
+    assert graph.number_of_edges() == 3
 
 
+def test_network_colors_match_original_html():
+    from src.plots.networks import NODE_COLORS, EDGE_COLORS
 
-def test_network_rank_follows_cluster_particle_count():
-    nx = pytest.importorskip("networkx")
-    from src.plots.networks import _rank_members
-
-    graph = nx.Graph()
-    graph.add_nodes_from(range(7))
-    graph.add_edges_from([(0, 1), (2, 3), (4, 5)])
-    lengths = np.array([30, 30, 141, 141, 30, 30, 30])
-    ranked = _rank_members(graph, lengths)
-
-    assert ranked["largest"] == {2, 3}
-    assert ranked["second"] == {0, 1}
-    assert ranked["third"] == {4, 5}
-    assert ranked["monomers"] == {6}
-    assert ranked["other_multimers"] == set()
+    assert NODE_COLORS == {"cag10": "#56A9D5", "cag47": "#F05252"}
+    assert EDGE_COLORS["cag10_cag47"] == "#AC79C3"
+    assert EDGE_COLORS["cag10_cag10"] == NODE_COLORS["cag10"]
+    assert EDGE_COLORS["cag47_cag47"] == NODE_COLORS["cag47"]
 
 
 def test_rg_frame_intervals_use_last_twenty_percent(tmp_path):
