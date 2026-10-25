@@ -377,11 +377,11 @@ def plot_ranked_condition(
             if annotate_molecules:
                 for i, rank in enumerate(RANKS):
                     count = row[f"rank_{rank}_{sp}_n_molecules_mean"]
-                    if np.isfinite(count) and values[i] > .005:
-                        ax.text(i, bottom[i] + values[i] + .015,
-                                f"{count:.1f}", ha="center", va="bottom",
+                    if np.isfinite(count) and values[i] > .04:
+                        ax.text(i, bottom[i] + values[i]/2,
+                                f"{count:.0f}", ha="center", va="center",
                                 fontsize=style.tick_size-1,
-                                color=style.species_colors[sp])
+                                color="#202020")
             bottom += values
     ax.set_xticks(positions, [style.label(r) for r in RANKS], rotation=28)
     ax.set_ylim(0, 1.15 if annotate_molecules else 1.03)
