@@ -84,3 +84,48 @@ def find_project_root(start: str | Path | None = None) -> Path:
         if (path / "analysis" / "src" / "plots" / "style.py").is_file():
             return path
     raise FileNotFoundError("Open the notebook from inside the rna_sticker_spacer checkout")
+
+
+
+def load_rg_frames(
+    output_root: str | Path, sweep: str, *,
+    late_fraction: float = .20,
+    input_sweep: str | Path | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Summarize the late-frame Rg distribution stored in pairing archives."""
+    import numpy as np
+
+    if not 0 < late_fraction <= 1:
+        raise ValueError("late_fraction must be in (0, 1]")
+    trajectories = load_sweep(output_root, sweep, "replicates")
+    roots = [Path(output_root) / sweep]
+    if input_sweep is not None:
+        roots.append(Path(input_sweep))
+
+    records = []
+    for row in trajectories.itertuples(index=False):
+        relative = (Path(row.folder_name) / "computed_metrics" / "pairing"
+                    / f"{row.traj_replicate}_pairing.npz")
+        archive = next((root / relative for root in roots
+                        if (root / relative).is_file()), None)
+        if archive is None:
+            raise FileNotFoundError(f"Pairing archive not found: {relative}")
+        with np.load(archive) as saved:
+            if "Rg_nm" not in saved:
+                raise KeyError(f"No Rg_nm data in {archive}")
+            radii = np.asarray(saved["Rg_nm"], dtype=float)
+        radii = radii[max(0, len(radii) - int(np.ceil(len(radii) * late_fraction))):]
+        records.append({
+            "angle_k_ppp": row.angle_k_ppp,
+            "E_att": row.E_att,
+            "Rg_nm": float(radii.mean()),
+            "Rg_nm_p10": float(np.quantile(radii, .10)),
+            "Rg_nm_p90": float(np.quantile(radii, .90)),
+        })
+
+    replicates = pd.DataFrame(records)
+    summary = (replicates.groupby(["angle_k_ppp", "E_att"], as_index=False)
+               .agg(Rg_nm_mean=("Rg_nm", "mean"),
+                    Rg_nm_p10=("Rg_nm_p10", "mean"),
+                    Rg_nm_p90=("Rg_nm_p90", "mean")))
+    return replicates, summary
