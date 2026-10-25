@@ -86,7 +86,6 @@ def save_pyvis_network(
     species_by_length: dict[int, str] | None = None,
 ) -> Path:
     """Save a single frame's molecular clusters as standalone HTML."""
-    import networkx as nx
     from pyvis.network import Network
 
     if min_contacts < 1:
@@ -143,4 +142,25 @@ def save_pyvis_network(
     output = Path(output_html)
     output.parent.mkdir(parents=True, exist_ok=True)
     net.write_html(str(output), open_browser=False)
+    entries = (
+        ("CAG10", NODE_COLORS["cag10"]),
+        ("CAG47", NODE_COLORS["cag47"]),
+        ("10–10", EDGE_COLORS["cag10_cag10"]),
+        ("10–47", EDGE_COLORS["cag10_cag47"]),
+        ("47–47", EDGE_COLORS["cag47_cag47"]),
+    )
+    legend = "".join(
+        f'<span style="display:inline-block;width:12px;height:12px;'
+        f'background:{color};margin:0 4px -2px 8px"></span>{label}'
+        for label, color in entries
+    )
+    panel = (
+        '<div style="position:absolute;left:50%;bottom:16px;'
+        'transform:translateX(-50%);background:white;'
+        'border:1px solid #D5D5D5;border-radius:5px;'
+        'padding:8px 12px;white-space:nowrap;font:12px Arial,sans-serif">'
+        + legend + '</div>'
+    )
+    html = output.read_text(encoding="utf-8")
+    output.write_text(html.replace("</body>", panel + "</body>"), encoding="utf-8")
     return output
