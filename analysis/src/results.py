@@ -1,13 +1,8 @@
-"""Atomic replicate checkpoints and wide, sweep-local analysis tables.
-
-Every row in replicates.csv is one trajectory. Every row in summary.csv is one
-experimental condition. Scientific metrics retain readable, stable column names.
-"""
+"""Store replicate metrics and export wide analysis tables."""
 
 from __future__ import annotations
 
 import json
-import re
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -16,8 +11,7 @@ import numpy as np
 import pandas as pd
 
 
-# Run provenance stays in SQLite. These are the minimal columns needed when
-# analyzing a sweep's CSV without joining a separate metadata table.
+# Metadata included in the per-trajectory CSV.
 REPLICATE_METADATA = [
     "folder_name", "traj_replicate", "molecule_file", "sequence_class",
     "repeat_count", "scramble_id", "E_att", "angle_k_ppp", "density",
@@ -31,8 +25,7 @@ CONDITION_METADATA = [
     "nm_per_sim_length_unit", "late_fraction", "min_contacts",
 ]
 
-# Long-format bins contain punctuation such as "<2%"; these labels are made
-# valid, readable pandas column names with explicit stable mappings.
+# Column names for cluster-size classes.
 BIN_NAMES = {
     "mono": "monomer", "di": "dimer", "tri": "trimer",
     "4-9": "4_to_9", "10-19": "10_to_19", "20-49": "20_to_49",
@@ -56,7 +49,9 @@ def _name(value: Any) -> str:
     raw = str(value)
     if raw in BIN_NAMES:
         return BIN_NAMES[raw]
-    return re.sub(r"_+", "_", re.sub(r"[^a-zA-Z0-9]+", "_", raw)).strip("_").lower()
+    normalized = "".join(char.lower() if char.isascii() and char.isalnum()
+                         else "_" for char in raw)
+    return "_".join(part for part in normalized.split("_") if part)
 
 
 def _finite(value: Any) -> float | None:
@@ -81,11 +76,7 @@ def metrics_from_analysis(
     bins: pd.DataFrame,
     extra_tables: dict[str, pd.DataFrame],
 ) -> dict[str, float]:
-    """Flatten a completed trajectory into uniquely named scalar columns.
-
-    Pairing/contact calculations are upstream; this only reshapes their
-    late-window averages and preserves ranked-cluster and species labels.
-    """
+    """Flatten trajectory-level metrics into scalar columns."""
     metrics: dict[str, float] = {}
 
     for key, value in summary.items():
