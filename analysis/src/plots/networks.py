@@ -50,6 +50,33 @@ def _cluster_graph(edges: list[tuple[int, int, int]]):
     return graph
 
 
+def _layout_clusters(graph):
+    """Place disconnected molecular clusters without overlapping them."""
+    import networkx as nx
+
+    components = sorted(nx.connected_components(graph), key=len, reverse=True)
+    widths = [max(90.0, 38.0 * np.sqrt(len(component))) for component in components]
+    row_limit = max(max(widths), np.sqrt(sum(width * width for width in widths)))
+    positions = {}
+    x_offset, y_offset, row_height = 0.0, 0.0, 0.0
+
+    for members, width in zip(components, widths):
+        if x_offset and x_offset + width > row_limit:
+            x_offset = 0.0
+            y_offset += row_height
+            row_height = 0.0
+        local = nx.spring_layout(
+            graph.subgraph(members), seed=42, iterations=250,
+            scale=width * .42, weight="weight",
+        )
+        center = np.array([x_offset + width / 2, y_offset + width / 2])
+        for molecule, point in local.items():
+            positions[molecule] = np.asarray(point) + center
+        x_offset += width + 28
+        row_height = max(row_height, width + 28)
+    return positions
+
+
 def save_pyvis_network(
     graph_npz: str | Path,
     molecule_lookup_npy: str | Path,
@@ -57,7 +84,6 @@ def save_pyvis_network(
     frame: int = -1,
     min_contacts: int = 2,
     species_by_length: dict[int, str] | None = None,
-    trajectory_gsd: str | Path | None = None,
 ) -> Path:
     """Save a single frame's molecular clusters as standalone HTML."""
     import networkx as nx
@@ -70,18 +96,11 @@ def save_pyvis_network(
     species_by_length = species_by_length or {30: "cag10", 141: "cag47"}
     chosen, edges = _frame_edges(graph_npz, frame, min_contacts)
 
-    if trajectory_gsd is not None and frame == -1:
-        import gsd.hoomd
-
-        with gsd.hoomd.open(str(trajectory_gsd), "r") as trajectory:
-            if chosen != len(trajectory) - 1:
-                raise ValueError("The cached graph does not include the final GSD frame")
-
     graph = _cluster_graph(edges)
     if not graph:
         raise ValueError(f"No molecular clusters at frame {chosen}")
 
-    positions = nx.spring_layout(graph, seed=42, iterations=250, scale=550)
+    positions = _layout_clusters(graph)
     net = Network(
         height="850px", width="100%", bgcolor="white",
         notebook=False, directed=False, cdn_resources="in_line",
