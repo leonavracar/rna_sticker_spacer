@@ -341,3 +341,45 @@ def test_component_size_classification():
     assert groups[7] == "monomer"
     assert graph.number_of_edges() == 5
     assert COMPONENT_COLORS["large_cluster"] != COMPONENT_COLORS["monomer"]
+
+
+
+def test_network_rank_follows_cluster_particle_count():
+    nx = pytest.importorskip("networkx")
+    from src.plots.networks import _rank_members
+
+    graph = nx.Graph()
+    graph.add_nodes_from(range(7))
+    graph.add_edges_from([(0, 1), (2, 3), (4, 5)])
+    lengths = np.array([30, 30, 141, 141, 30, 30, 30])
+    ranked = _rank_members(graph, lengths)
+
+    assert ranked["largest"] == {2, 3}
+    assert ranked["second"] == {0, 1}
+    assert ranked["third"] == {4, 5}
+    assert ranked["monomers"] == {6}
+    assert ranked["other_multimers"] == set()
+
+
+def test_rg_frame_intervals_use_last_twenty_percent(tmp_path):
+    from src.plots.data import load_rg_frames
+
+    sweep = "validation_test"
+    run = "0_test"
+    output = tmp_path / "analysis_results" / sweep
+    folder = output / run / "computed_metrics" / "pairing"
+    folder.mkdir(parents=True)
+    np.savez(folder / "trajectory_0_pairing.npz",
+             Rg_nm=np.array([10.] * 8 + [1., 3.]))
+    pd.DataFrame([{
+        "folder_name": run,
+        "traj_replicate": "trajectory_0",
+        "angle_k_ppp": 2.5, "E_att": 4., "density": .01,
+    }]).to_csv(output / "replicates.csv", index=False)
+
+    reps, summary = load_rg_frames(tmp_path / "analysis_results", sweep,
+                                   late_fraction=.20, density=.01)
+    assert reps.iloc[0]["Rg_nm"] == pytest.approx(2.)
+    assert summary.iloc[0]["Rg_nm_mean"] == pytest.approx(2.)
+    assert summary.iloc[0]["Rg_nm_p10"] == pytest.approx(1.2)
+    assert summary.iloc[0]["Rg_nm_p90"] == pytest.approx(2.8)
