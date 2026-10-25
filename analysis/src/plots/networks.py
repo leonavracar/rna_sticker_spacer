@@ -79,6 +79,15 @@ def available_network_ranks(
             if members]
 
 
+def _contact_type(species_a: str, species_b: str) -> str:
+    """Return the base-pair contact class for a molecular edge."""
+    if species_a == species_b:
+        return f"{species_a}_{species_a}"
+    if {species_a, species_b} == {"cag10", "cag47"}:
+        return "cag10_cag47"
+    return "other"
+
+
 def _legend(style: PlotStyle, title: str, frame: int,
             molecule_count: int, edge_count: int) -> str:
     """Render the color key above the network."""
@@ -189,8 +198,7 @@ def save_pyvis_network(
         )
     for a, b, data in graph.edges(data=True):
         kind_a, kind_b = species[a], species[b]
-        contact_type = ("cag10_cag47" if kind_a != kind_b
-                        else f"{kind_a}_{kind_b}")
+        contact_type = _contact_type(kind_a, kind_b)
         color = style.contact_colors.get(contact_type, "#999999")
         weight = int(data["weight"])
         net.add_edge(
