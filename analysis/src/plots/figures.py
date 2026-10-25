@@ -147,7 +147,8 @@ def plot_largest_cluster_metric(
     for pos, (_, row) in zip(positions, d.iterrows()):
         count = row[f"{annotation}_mean"]
         if np.isfinite(count):
-            text = (f"N_mol = {count:.1f}" if annotation_label == "N_mol"
+            text = (rf"$N_{{\mathrm{{molecules}}}} = {count:.1f}$"
+                    if annotation_label in {"N_mol", "N_molecules"}
                     else f"{count:.0f} {annotation_label}")
             ax.annotate(
                 text,
@@ -494,27 +495,32 @@ def plot_mfe_pairing_scatter(
     style: PlotStyle, x: str = "mfe_matches", y: str = "extra_pairs",
     attraction_order: Sequence | None = None,
 ) -> Axes:
-    """Plot simulated MFE matches against extra base pairs."""
+    """Show replicate base-pair counts and the mean for each attraction."""
+    from matplotlib.ticker import MaxNLocator
+
     require_columns(df, [x, y, "E_att"])
-    order, _ = _categorical_axis(df, "E_att", attraction_order)
-    palette = style.attraction_palette(order)
-    for value in order:
-        group = df.loc[df["E_att"] == value].dropna(subset=[x, y])
+    strengths, _ = _categorical_axis(df, "E_att", attraction_order)
+    palette = style.attraction_palette(strengths)
+    for strength in strengths:
+        group = df[df["E_att"] == strength].dropna(subset=[x, y])
         if group.empty:
             continue
-        col = palette[value]
-        ax.scatter(group[x], group[y], color=col,
-                   s=style.point_size*.8, alpha=style.point_alpha,
-                   label=f"{value:g}")
-        xmean, ymean = group[x].mean(), group[y].mean()
-        ax.plot([xmean], [ymean], marker="+", color=col,
-                markersize=15, markeredgewidth=2.2, linestyle="none")
-        ax.annotate(f"({xmean:.1f}, {ymean:.1f})",
-                    (xmean, ymean), xytext=(6, 6),
-                    textcoords="offset points", fontsize=style.tick_size-1,
-                    color=col)
-    return _format_axis(ax, style=style, xlabel=style.label(x),
-                        ylabel=style.label(y))
+        color = palette[strength]
+        ax.scatter(group[x], group[y], s=30, color=color, alpha=.65,
+                   edgecolor="#404040", linewidth=.45,
+                   label=f"{strength:g}")
+        mean_x, mean_y = group[[x, y]].mean()
+        ax.scatter(mean_x, mean_y, s=90, marker="X", color=color,
+                   edgecolor="#242424", linewidth=1.1, zorder=5)
+        ax.annotate(
+            f"({mean_x:.1f}, {mean_y:.1f})",
+            (mean_x, mean_y), xytext=(6, 5),
+            textcoords="offset points", fontsize=8, color="#303030",
+        )
+    ax.axhline(0, color="#53BCE7", linewidth=.9, linestyle="--")
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True, nbins=7))
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True, nbins=6))
+    return _format_axis(ax, style=style, xlabel="MFE matches", ylabel="Extra pairs")
 
 
 def plot_precision_recall(
@@ -522,21 +528,34 @@ def plot_precision_recall(
     color_by: str = "E_att", threshold: float = .8,
     attraction_order: Sequence | None = None,
 ) -> Axes:
-    """Plot precision and recall by attraction strength."""
+    """Plot MFE recall against precision and mark the accuracy quadrants."""
     require_columns(df, ["precision", "recall", color_by])
-    order, _ = _categorical_axis(df, color_by, attraction_order)
-    palette = style.attraction_palette(order)
-    for value in order:
-        group = df.loc[df[color_by] == value]
-        if group.empty:
-            continue
-        ax.scatter(group["precision"], group["recall"], color=palette[value],
-                   s=style.point_size, alpha=style.point_alpha,
-                   label=f"{value:g}", linewidths=0)
-    ax.axvline(threshold, color="#888", linestyle="--", linewidth=1)
-    ax.axhline(threshold, color="#888", linestyle="--", linewidth=1)
-    ax.set(xlim=(-.02, 1.02), ylim=(-.02, 1.02))
-    return _format_axis(ax, style=style, xlabel="Precision", ylabel="Recall")
+    strengths, _ = _categorical_axis(df, color_by, attraction_order)
+    palette = style.attraction_palette(strengths)
+    for strength in strengths:
+        group = df[df[color_by] == strength]
+        ax.scatter(
+            group["recall"], group["precision"], color=palette[strength],
+            s=27, alpha=.7, edgecolor="#333333", linewidth=.4,
+            label=f"{strength:g}",
+        )
+    for coordinate in ("vertical", "horizontal"):
+        (ax.axvline if coordinate == "vertical" else ax.axhline)(
+            threshold, linestyle="--", color="#53BCE7", linewidth=1,
+        )
+    ax.text(.05, .97, "partial\nbut specific", transform=ax.transAxes,
+            va="top", ha="left", fontsize=8, color="#444444")
+    ax.text(.97, .97, "complete\n+ specific", transform=ax.transAxes,
+            va="top", ha="right", fontsize=8, color="#444444")
+    ax.text(.05, .07, "missing\n+ noisy", transform=ax.transAxes,
+            va="bottom", ha="left", fontsize=8, color="#444444")
+    ax.text(.97, .07, "complete\nbut noisy", transform=ax.transAxes,
+            va="bottom", ha="right", fontsize=8, color="#444444")
+    ax.set(xlim=(0, 1.02), ylim=(0, 1.02))
+    ax.set_xticks(np.linspace(0, 1, 6))
+    ax.set_yticks(np.linspace(0, 1, 6))
+    return _format_axis(ax, style=style, xlabel="MFE recall",
+                        ylabel="MFE precision")
 
 
 def plot_rg_validation(
@@ -544,38 +563,45 @@ def plot_rg_validation(
     style: PlotStyle, x: str = "E_att", x_order: Sequence | None = None,
     reference_nm: float | None = 1.47,
 ) -> Axes:
-    """Plot replicate radii and 10th–90th percentile intervals."""
+    """Plot per-condition Rg means, replicate values and percentile ranges."""
     require_columns(summary, [x, "Rg_nm_mean", "Rg_nm_p10", "Rg_nm_p90"])
     require_columns(replicates, [x, "Rg_nm"])
-    d = summary.sort_values(x)
-    order, positions = _categorical_axis(d, x, x_order)
-    loc = {v: i for i, v in enumerate(order)}
+    strengths, _ = _categorical_axis(summary, x, x_order)
+    positions = {value: i for i, value in enumerate(strengths)}
+    palette = style.attraction_palette(strengths)
     rng = np.random.default_rng(42)
-    palette = style.attraction_palette(order)
-    raw = replicates.dropna(subset=["Rg_nm", x])
-    for strength, group in raw.groupby(x):
+
+    for strength in strengths:
+        raw = replicates.loc[replicates[x] == strength, "Rg_nm"].dropna()
+        xpos = positions[strength]
         ax.scatter(
-            group[x].map(loc).to_numpy(dtype=float)
-            + rng.uniform(-style.jitter, style.jitter, len(group)),
-            group["Rg_nm"], s=style.point_size*.65, alpha=.38,
-            color=palette[strength], zorder=2,
+            xpos + rng.uniform(-.06, .06, len(raw)), raw,
+            color=palette[strength], alpha=.55, s=20, zorder=3,
         )
-    for _, row in d.iterrows():
-        xpos = loc[row[x]]
-        mean = row["Rg_nm_mean"]
-        ax.errorbar(
-            xpos, mean,
-            yerr=[[max(0, mean-row["Rg_nm_p10"])],
-                  [max(0, row["Rg_nm_p90"]-mean)]],
-            fmt="o", color=palette[row[x]], elinewidth=1.4, capsize=3,
-            zorder=4,
-        )
+        condition = summary.loc[summary[x] == strength]
+        if condition.empty:
+            continue
+        row = condition.iloc[0]
+        mean = float(row["Rg_nm_mean"])
+        low, high = float(row["Rg_nm_p10"]), float(row["Rg_nm_p90"])
+        ax.vlines(xpos, low, high, color="#9BD1ED", linewidth=6,
+                  alpha=.5, zorder=2)
+        ax.hlines(mean, xpos-.16, xpos+.16, color="black",
+                  linewidth=2.3, zorder=4)
+        ax.plot(xpos, mean, marker="o", color=palette[strength],
+                markersize=6, zorder=5)
+        ax.annotate(f"{mean:.2f}", (xpos, mean), xytext=(10, -2),
+                    textcoords="offset points", va="center",
+                    fontsize=8, color="#333333")
+
     if reference_nm is not None:
-        ax.axhline(reference_nm, ls="--", linewidth=1,
-                   color="#B85058", label=f"Reference ({reference_nm:g} nm)")
-    _set_categorical_ticks(ax, order)
+        ax.axhline(reference_nm, linestyle="--", linewidth=1.3,
+                   color="#29B5E9")
+        ax.text(.98, .96, f"ref Rg = {reference_nm:g}",
+                transform=ax.transAxes, ha="right", va="top", fontsize=8)
+    _set_categorical_ticks(ax, strengths)
     return _format_axis(ax, style=style, xlabel=style.label(x),
-                        ylabel=style.label("Rg_nm"))
+                        ylabel="Radius of gyration")
 
 
 def make_figure(nrows: int = 1, ncols: int = 1, *,
