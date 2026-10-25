@@ -308,3 +308,36 @@ def test_ranked_condition_pure_count_labels():
         "Top 1", "Top 2", "Top 3"
     ]
     plt.close(fig)
+
+
+def test_network_uses_last_saved_trajectory_frame(tmp_path):
+    from src.plots.networks import _frame_edges
+
+    archive = tmp_path / "graph.npz"
+    np.savez(
+        archive,
+        frame_indices=np.array([0, 3999]),
+        frame=np.array([0, 3999, 3999]),
+        mol_a=np.array([0, 0, 1]),
+        mol_b=np.array([1, 2, 2]),
+        n_contacts=np.array([8, 3, 1]),
+    )
+    chosen, edges = _frame_edges(archive, frame=-1, min_contacts=2)
+    assert chosen == 3999
+    assert edges == [(0, 2, 3)]
+
+
+def test_component_size_classification():
+    pytest.importorskip("networkx")
+    from src.plots.networks import _component_groups, COMPONENT_COLORS
+
+    graph, groups, sizes = _component_groups(
+        8,
+        [(0, 1, 2), (1, 2, 3), (2, 3, 5), (3, 4, 2), (5, 6, 4)],
+    )
+    assert groups[0] == "large_cluster"
+    assert sizes[0] == 5
+    assert groups[5] == "dimer"
+    assert groups[7] == "monomer"
+    assert graph.number_of_edges() == 5
+    assert COMPONENT_COLORS["large_cluster"] != COMPONENT_COLORS["monomer"]
