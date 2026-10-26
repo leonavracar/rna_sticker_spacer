@@ -1,6 +1,6 @@
 # Figure registry and visualization architecture
 
-**Status:** Historical figure registry and design reference. For the **implemented** notebook-first workflow, see [analysis/notebooks/README.md](../notebooks/README.md) and `analysis/src/plots/`. The notebooks use the new wide CSV exports and a uniform **final 10%** analysis window, whereas the original thesis used 20% for single-chain validation and 5% for mixtures. Thus they are updated analyses, not necessarily pixel-exact thesis reproductions.
+**Status:** Historical figure registry and design reference. For the **implemented** notebook-first workflow, see [the analysis guide](../README.md) and `analysis/src/plots/`. The notebooks use the new wide CSV exports and a uniform **final 10%** analysis window, whereas the original thesis used 20% for single-chain validation and 5% for mixtures. Thus they are updated analyses, not necessarily pixel-exact thesis reproductions.
 
 ## Scope
 
