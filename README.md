@@ -95,9 +95,9 @@ For a smaller CPU-only setup, see [`analysis/requirements.txt`](analysis/require
 **For new GPU simulations**, two additional components must be **compiled from source** against a compatible Python/CUDA toolchain:
 
 1. **[HOOMD-blue](https://github.com/glotzerlab/hoomd-blue)** — the molecular-dynamics engine.
-2. **The custom SQD / valency-bounding plugin** — required by `from hoomd.sqd_plugin import sqd_potential` in [`bulk/simulation.py`](bulk/simulation.py). The [VBC plugin repository cited by the paper](https://github.com/glab-vbc/vbc_plugin) is a source reference, **not yet a verified drop-in build** for this SQD import path.
+2. **The custom SQD / valency-bounding plugin** — required by `from hoomd.sqd_plugin import sqd_potential` in [`bulk/simulation.py`](bulk/simulation.py). The [VBC plugin repository cited by the paper](https://github.com/glab-vbc/vbc_plugin) is currently **private / not yet publicly released**; its URL is retained for reference. The exact version compatible with this project's SQD import path must be documented before public simulation reproduction.
 
-**Compatibility note:** The production HOOMD-blue source version and plugin commit have not yet been pinned in this README. Do **not** install HOOMD-blue's latest release or substitute a new VBC plugin version and assume it will run unchanged. The paper's GitHub link also needs its public availability confirmed.
+**Compatibility note:** The production HOOMD-blue source version and plugin commit have not yet been pinned in this README. Do **not** install HOOMD-blue's latest release or substitute a new VBC plugin version and assume it will run unchanged. The VBC repository is not yet publicly accessible; GitHub returns 404 to visitors without access.
 
 On a machine where the simulation already works, identify the installed interface first:
 
@@ -198,4 +198,4 @@ The maintained workflow is in `analysis/`. Legacy notebooks/scripts remain avail
 
 **Simulation engine:** [HOOMD-blue](https://github.com/glotzerlab/hoomd-blue). **Trajectory analysis:** [GSD](https://github.com/glotzerlab/gsd) and [freud](https://github.com/glotzerlab/freud). **RNA structure references:** [ViennaRNA](https://www.tbi.univie.ac.at/RNA/).
 
-The SQD/VBC interaction implementation is an external research dependency and should be cited separately from this repository's RNA modelling, experiment setup, and analysis code.
+The SQD/VBC interaction implementation is an external research dependency, currently not publicly accessible, and should be cited separately from this repository's RNA modelling, experiment setup, and analysis code.
