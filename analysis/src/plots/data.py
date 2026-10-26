@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 
+import numpy as np
 import pandas as pd
 
 
@@ -24,7 +25,7 @@ def load_sweep(output_root: str | Path, sweep: str, kind: str = "replicates") ->
     return df
 
 
-def filter_rows(df: pd.DataFrame, **conditions) -> pd.DataFrame:
+def filter_rows(df: pd.DataFrame, **conditions: object) -> pd.DataFrame:
     """Filter experimental conditions; each argument is a value or sequence."""
     mask = pd.Series(True, index=df.index)
     for name, condition in conditions.items():
@@ -94,8 +95,6 @@ def load_rg_frames(
     density: float | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Summarize the late-frame Rg distribution stored in pairing archives."""
-    import numpy as np
-
     if not 0 < late_fraction <= 1:
         raise ValueError("late_fraction must be in (0, 1]")
     trajectories = load_sweep(output_root, sweep, "replicates")
