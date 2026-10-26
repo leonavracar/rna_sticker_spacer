@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 
 import numpy as np
 import pandas as pd
@@ -20,7 +21,7 @@ def identify_species(lengths: np.ndarray, labels_by_length: dict[int, str]) -> n
     return np.array([labels_by_length[int(n)] for n in lengths])
 
 
-def intramolecular_frames(intra_npz) -> dict[int, dict[int, int]]:
+def intramolecular_frames(intra_npz: Mapping[str, np.ndarray] | np.lib.npyio.NpzFile) -> dict[int, dict[int, int]]:
     """Index per-molecule intramolecular contacts by saved frame."""
     frames = {int(f): {} for f in intra_npz["frame_indices"]}
     for frame, mol, count in zip(
@@ -39,11 +40,11 @@ def _pair_key(a: str, b: str) -> str:
 
 
 def mixture_cluster_rows(
-    edge_npz,
+    edge_npz: Mapping[str, np.ndarray] | np.lib.npyio.NpzFile,
     lengths: np.ndarray,
     species: np.ndarray,
     min_contacts: int = 2,
-    intra_npz=None,
+    intra_npz: Mapping[str, np.ndarray] | np.lib.npyio.NpzFile | None = None,
     pairable_sites_by_species: dict[str, int] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Return ranked, largest-cluster, contact and system-wide framewise metrics.
