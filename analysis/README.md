@@ -98,7 +98,7 @@ To rebuild CSV exports directly from existing checkpoints (no GSD or NPZ reads):
 python analysis/aggregate.py --output-root ./analysis_results
 ```
 
-Add `--sweep 52b_from_frame` to target one sweep. Input GSDs remain at their original simulation location; outputs are written only under the configured results root. The obsolete `analysis/analysis_output/` folder is **not** part of this workflow and is ignored by Git. `analysis_results/` remains the canonical output tree, with reviewed CSVs tracked and caches ignored.
+Add `--sweep 52b_from_frame` to target one sweep. Input GSDs remain at their original simulation location; outputs are written only under the configured results root. The obsolete `analysis/analysis_output/` folder is **not** part of this workflow and has no files tracked in Git. `analysis_results/` remains the canonical output tree, with reviewed CSVs tracked and caches ignored.
 
 ## Tests and numerical validation
 
