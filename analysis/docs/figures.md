@@ -1,5 +1,7 @@
 # Figure registry and visualization architecture
 
+> **Archive note:** paths into `analysis_scripts/` below refer to historical implementations removed from the active repository; those files remain accessible in Git history. For current code, use [`analysis/src/`](../src/).
+
 **Status:** Historical figure registry and design reference. For the **implemented** notebook-first workflow, see [the analysis guide](../README.md) and `analysis/src/plots/`. The notebooks use the new wide CSV exports and a uniform **final 10%** analysis window, whereas the original thesis used 20% for single-chain validation and 5% for mixtures. Thus they are updated analyses, not necessarily pixel-exact thesis reproductions.
 
 ## Scope

@@ -59,6 +59,20 @@ The maintained pipeline, [`analysis/run_pipeline.py`](analysis/run_pipeline.py),
 
 Outputs include pair counts (intra- and intermolecular), qualifying graph edges, connected components, particle-weighted cluster-size distributions, ranked clusters, contact recurrence, and species-resolved mixture measurements. Definitions and denominators are documented in the [metric reference](analysis/docs/metrics.md).
 
+
+## Simulation campaigns
+
+The repository includes the **original parameter grids** (`parameters.txt`) and exact RNA sequence/multiplicity definitions (`*.json`) under [`bulk/experiments/`](bulk/experiments/). These are four scientific analyses organized into five simulation sweeps:
+
+| Study | Original sweep inputs | Question |
+| --- | --- | --- |
+| **Single-chain validation** | [`53c_single_mol_duplex`](bulk/experiments/53c_single_mol_duplex/) | Does the model recover ViennaRNA reference contacts and expected single-chain behavior? |
+| **Reentrant clustering** | [`50b_reentrant_full`](bulk/experiments/50b_reentrant_full/) | How do attraction strength and backbone stiffness affect CAG47 assembly? |
+| **Length and sequence patterning** | [`51a_repeat_number`](bulk/experiments/51a_repeat_number/) · [`51b_repeat_number_rand`](bulk/experiments/51b_repeat_number_rand/) | How do CAG repeat length and composition-matched scrambled controls affect clustering? |
+| **Mixed RNA populations** | [`52b_from_frame`](bulk/experiments/52b_from_frame/) | How do short CAG10 and long CAG47 chains organize in mixed systems? |
+
+Input filenames and sequence-specific scramble identifiers are preserved as used in the original runs. The full trajectory archives and generated per-sweep results are **not included in Git**; they are stored or regenerated separately. Pinning the original HOOMD/SQD source revisions is still necessary for end-to-end simulation reproduction.
+
 ## Example applications
 
 The following plots illustrate two applications of the simulation and analysis framework, rather than attempting to reproduce every result in the thesis.
@@ -135,7 +149,7 @@ python bulk/run_sim.py \
 
 The runner changes into `bulk/`, so these input/output paths are relative to that directory. This command requires the working **GPU HOOMD + SQD source build** described above; it is an illustrative small run, **not** the full production sweep. The runner writes a GSD trajectory, parameter JSON, and replicate metadata to `bulk/output_dir/readme_demo/`.
 
-The [sequence definitions](bulk/sequences/) use JSON arrays containing `sequence` and `count` fields. Existing examples include [CAG47](bulk/sequences/cag47.json) and [the validation duplex](bulk/sequences/duplex.json). **Not all exact production input manifests, particularly mixed and scrambled systems, are checked in yet**; they must be included with their original sequences and multiplicities before a full production rerun can be claimed reproducible.
+The [sequence definitions](bulk/sequences/) use JSON arrays containing `sequence` and `count` fields. Reusable examples include [CAG47](bulk/sequences/cag47.json) and [a validation duplex](bulk/sequences/duplex.json). The **original production inputs** are now grouped by sweep in [`bulk/experiments/`](bulk/experiments/): each experiment keeps its own `parameters.txt` and matching JSON sequence definitions, including the exact independently scrambled variants.
 
 Parameter sweeps are supported by [`bulk/sweep.py`](bulk/sweep.py), a SLURM array wrapper. Its `PROJECT_DIR` and scheduler settings are cluster-specific and must be adapted before reuse elsewhere.
 
@@ -160,8 +174,8 @@ Use `--stage analyze` to rebuild summaries from existing intermediate NPZs witho
 
 Model development included **backbone persistence-length calibration** and **single-chain structure comparisons against ViennaRNA** using MFE matches, precision/recall, and radius of gyration. These validation steps are separate from the clustering analyses; their details belong in the linked notebooks and figure records rather than in a second thesis-like README.
 
-- [Persistence-length analysis notebook](analysis_scripts/archive/PersistenceLengthAnalysis.ipynb) and [exported report](notebooks/persistence_length.html).
-- [Single-chain validation notebook](analysis/notebooks/01_validation.ipynb), [metric definitions](analysis/docs/metrics.md), and [saved validation sweep tables](analysis_results/53c_single_mol_duplex/).
+- [Persistence-length calibration figure](assets/persistence_length.png) and [earlier exported notebook report](notebooks/persistence_length.html).
+- [ViennaRNA precision/recall figure](assets/viennarna_precision_recall.png), [single-chain validation notebook](analysis/notebooks/01_validation.ipynb), and [metric definitions](analysis/docs/metrics.md).
 - [Figure registry](analysis/docs/figures.md) distinguishes original thesis-specific late-window choices from the present pipeline's standard final-10% convention.
 
 The repository provides synthetic unit/regression tests and a **real-GSD integration test** using checked-in fixtures:
@@ -175,22 +189,23 @@ python -m pytest analysis/tests/test_integration_mixture.py -m integration -q
 
 The mixture input trajectory and its expected CSV outputs are kept together under [`analysis/tests/fixtures/mixture/`](analysis/tests/fixtures/mixture/). The integration test exercises GSD → pairing → molecular graphs → SQLite/CSV and verifies both regression outputs and numerical invariants. The tests passed on the research cluster on 26 October 2026 (35 standard tests and one integration test); they should be rerun whenever scientific algorithms or dependencies change.
 
-Reference CSVs are regression baselines, not independent proof of the physical model. Large production GSDs, caches and checkpoints are deliberately excluded from Git; selected sweep-level CSVs are tracked for inspection.
+Reference CSVs are regression baselines, not independent proof of the physical model. The checked-in `analysis/tests/fixtures/` data support testing; full production trajectories, per-sweep `analysis_results/` tables, caches, and checkpoints are kept outside Git.
 
 ## Repository guide
 
 | Location | Contents |
 | --- | --- |
 | [`bulk/`](bulk/) | GPU simulation, parameters, molecule construction, SLURM sweep |
-| [`bulk/sequences/`](bulk/sequences/) | RNA sequence input definitions |
+| [`bulk/sequences/`](bulk/sequences/) | Reusable RNA sequence examples |
+| [`bulk/experiments/`](bulk/experiments/) | Original input sequences and parameter grids, by sweep |
 | [`analysis/src/`](analysis/src/) | Pairing, contact graphs, clustering, statistics, plotting |
 | [`analysis/notebooks/`](analysis/notebooks/) | Curated scientific figures for validation, reentrance, length and mixtures |
 | [`analysis/tests/`](analysis/tests/) | Unit tests, pipeline regression tests and real-GSD fixture |
-| [`analysis_results/`](analysis_results/) | Selected per-sweep replicate and condition tables |
+| `analysis_results/` (generated, untracked) | Per-sweep CSVs, checkpoints and local figure exports |
 | [`analysis/docs/`](analysis/docs/) | Metric specification and historical thesis-figure registry |
-| [`analysis_scripts/`](analysis_scripts/) and [`notebooks/`](notebooks/) | Earlier exploratory research code and notebooks, retained as references |
+| [`notebooks/`](notebooks/) | Archived notebook exports / exploratory visualizations |
 
-The maintained workflow is in `analysis/`. Legacy notebooks/scripts remain available but are **not** the supported pipeline API.
+The maintained workflow is in `analysis/`. Earlier experimental scripts were removed from the active tree; they remain recoverable from Git history. The `notebooks/` directory contains older exported material.
 
 ## References and acknowledgement
 

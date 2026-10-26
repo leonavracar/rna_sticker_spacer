@@ -1,5 +1,7 @@
 # Analysis metrics and output contracts
 
+> **Archive note:** paths into `analysis_scripts/` below refer to historical implementations removed from the active repository; those files remain accessible in Git history. For current code, use [`analysis/src/`](../src/).
+
 > **Scientific reference and historical design notes.** Sections 1–2 record
 > important definitions and original thesis methods; sections 3–6 contain
 > earlier implementation proposals and open questions, **not the current CSV

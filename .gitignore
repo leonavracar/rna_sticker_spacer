@@ -1,53 +1,38 @@
-# Python and notebooks
+# Python, notebooks, test/build caches
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-bulk/troubleshooting/*.ipynb
+.coverage
+htmlcov/
 
-# Simulation and temporary outputs
-bulk/output_dir/
-bulk/job_output/
-bulk/troubleshooting/
-bulk/pipeline_logs/
-*.log
+# Local environments and OS files
+.venv/
+venv/
+conda-env/
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Generated simulation and analysis directories
+/bulk/output_dir/
+/bulk/job_output/
+/bulk/pipeline_logs/
+/bulk/troubleshooting/
+/analysis_results/
+/analysis/analysis_output/
+
+# Trajectories and generated analysis intermediates
 *.gsd
-*.h5
-*.hdf5
 *.npy
 *.npz
 *.sqlite
 *.sqlite3
 *.db
-*.traj
-*.dat
-*.lammpstrj
-*.dcd
-*.xtc
+*.log
 
-# Environment and system
-.env
-.venv/
-venv/
-conda-env/
-.DS_Store
-analysis_scripts/helper_scripts/nohup.out
-
-# Canonical generated result tree: only curated CSVs and figures are eligible.
-# Inspect sizes/content before git add. Do not commit SQLite/NPZ/checkpoints.
-# The folders are deliberately NOT ignored: selected outputs can be tracked.
-# Ignore everything under results by default, selectively include small exports.
-/analysis_results/*
-!/analysis_results/*/
-/analysis_results/*/*
-!/analysis_results/*/replicates.csv
-!/analysis_results/*/summary.csv
-!/analysis_results/*/figures/
-/analysis_results/*/figures/*
-!/analysis_results/*/figures/*.png
-!/analysis_results/*/figures/*.pdf
-
-# Curated self-contained demo trajectory (explicitly reviewed).
+# Explicitly tracked real-GSD test fixture
 !/analysis/tests/fixtures/mixture/input/trajectory_0.gsd

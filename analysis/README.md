@@ -19,13 +19,13 @@ rna_sticker_spacer/
 │   │       ├── input/         params.json and trajectory_0.gsd
 │   │       └── expected/      replicates.csv and summary.csv
 │   └── docs/                  Scientific metric definitions and figure registry
-├── analysis_results/<sweep>/  Per-sweep outputs (reviewed CSVs may be tracked)
-├── analysis_scripts/          Historical analysis code (preserved for reference)
+├── bulk/experiments/<sweep>/   Version-controlled parameter grids and RNA input files
+├── analysis_results/<sweep>/  Local generated results (ignored by Git)
 ├── notebooks/                 Legacy research notebooks (preserved for reference)
 └── environment.yml           Reviewed research Conda dependencies
 ```
 
-The pipeline is responsible for **measurements and aggregation**; the curated notebooks select conditions, visualize results, and interpret them. The original simulation and legacy research code are left intact. There is **no second `data/processed/` tree**.
+The pipeline is responsible for **measurements and aggregation**; the curated notebooks select conditions, visualize results, and interpret them. The simulation source remains unchanged. Earlier standalone analysis scripts were removed from the active tree and remain available through Git history. There is **no second `data/processed/` tree**.
 
 ## Environment
 
@@ -98,7 +98,7 @@ To rebuild CSV exports directly from existing checkpoints (no GSD or NPZ reads):
 python analysis/aggregate.py --output-root ./analysis_results
 ```
 
-Add `--sweep 52b_from_frame` to target one sweep. Input GSDs remain at their original simulation location; outputs are written only under the configured results root. The old `analysis/analysis_output/` folder is **not** part of this workflow and is intentionally left untouched.
+Add `--sweep 52b_from_frame` to target one sweep. Input GSDs remain at their original simulation location; outputs are written only under the configured results root. The old `analysis/analysis_output/` folder is **not** part of this workflow. Both generated output directories are ignored by Git.
 
 ## Tests and numerical validation
 
@@ -123,7 +123,7 @@ The short test trajectory and its CSVs must **not** be mixed into production sci
 
 ## Notebooks, plots, and figures
 
-The four curated notebooks in `analysis/notebooks/` use `analysis_results/<sweep>/replicates.csv` and `summary.csv`. They call functions from `analysis/src/plots/` rather than duplicating contact analysis.
+The four curated notebooks in `analysis/notebooks/` read locally generated `analysis_results/<sweep>/replicates.csv` and `summary.csv`; these full production tables are not version-controlled. They call functions from `analysis/src/plots/` rather than duplicating contact analysis.
 
 | Notebook | Scope | Main sweeps |
 | --- | --- | --- |
