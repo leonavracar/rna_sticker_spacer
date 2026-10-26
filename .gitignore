@@ -17,12 +17,11 @@ conda-env/
 !.env.example
 .DS_Store
 
-# Simulation and obsolete analysis outputs
+# Generated simulation outputs
 /bulk/output_dir/
 /bulk/job_output/
 /bulk/pipeline_logs/
 /bulk/troubleshooting/
-/analysis/analysis_output/
 
 # Exclude generated sweep outputs, except explicitly curated tables/figures
 /analysis_results/*
