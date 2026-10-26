@@ -10,12 +10,9 @@ single-chain validation, reentrance, length/patterning and mixed-RNA systems.
 It stores trajectory checkpoints in SQLite, exports plotting-ready CSVs and
 produces scientific figures through Jupyter notebooks.
 
-- [Environment setup](analysis/ENVIRONMENT.md) — CPU analysis and tests,
-  optional GSD processing, and how to export the research Conda environment.
-- [Analysis notebooks](analysis/notebooks/README.md) — the four research
-  questions and figures, using published CSVs by default.
-- [Analysis data locations](data/README.md) — use existing sweep-specific
-  `analysis_results/<sweep>/` outputs; no duplicated `data/processed/` staging tree.
+- [Analysis setup, outputs, notebooks and tests](analysis/README.md) — one maintained guide for the scientific analysis workflow.
+- [Research Conda environment](environment.yml) — Python/CUDA dependencies; HOOMD-blue and the SQD plugin are built from source.
+- [Metric definitions](analysis/docs/metrics.md) and [thesis figure registry](analysis/docs/figures.md) — scientific reference material.
 - [Automated tests](.github/workflows/analysis-tests.yml) — GitHub Actions
   runs the existing scientific, pipeline and plotting tests on Python 3.11.
   The CI suite requires no GPU or HOOMD-blue installation.
