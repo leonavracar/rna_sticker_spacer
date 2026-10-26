@@ -10,7 +10,7 @@
 
 
 **Status:** Phase 1 specification, v0.1 — definitions grounded in the MSc thesis; proposed file schemas pending implementation.
-**Sources:** *Biophysical Insights into Repeat-RNA Clustering from Coarse-Grained Molecular Dynamics* (2026), especially Methods `5.3–5.4 (thesis pp. 17–24), results `6.1–6.4 (pp. 25–44), and figures 5–18. Consult `5.1–5.2 for the physical model. See [figures.md](figures.md) for visualization requirements and [phase1_audit.md](phase1_audit.md) for code inventory.
+**Sources:** *Biophysical Insights into Repeat-RNA Clustering from Coarse-Grained Molecular Dynamics* (2026), especially Methods `5.3–5.4 (thesis pp. 17–24), results `6.1–6.4 (pp. 25–44), and figures 5–18. Consult `5.1–5.2 for the physical model. See [figures.md](figures.md) for visualization requirements; earlier migration inventories remain available in Git history.
 
 > The thesis is the scientific specification. Existing `analysis_scripts/` functions are candidates to migrate, not necessarily canonical definitions. `bulk/` is out of scope and must remain unchanged. Never discard original analysis artifacts before numerical regression tests pass.
 
