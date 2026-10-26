@@ -1,6 +1,8 @@
 """Framewise contact, molecular graph and cluster calculations."""
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import numpy as np
 import pandas as pd
 
@@ -20,7 +22,7 @@ def molecule_lengths(molecule_lookup: np.ndarray) -> np.ndarray:
     return lengths
 
 
-def edge_frames(edge_npz) -> dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]]:
+def edge_frames(edge_npz: Mapping[str, np.ndarray] | np.lib.npyio.NpzFile) -> dict[int, tuple[np.ndarray, np.ndarray, np.ndarray]]:
     """Index precomputed weighted molecule edges by saved frame."""
     frame = np.asarray(edge_npz["frame"], dtype=int)
     a = np.asarray(edge_npz["mol_a"], dtype=int)
@@ -45,7 +47,7 @@ def component_frame_rows(
     with_bins: bool = True,
     with_ranks: bool = False,
     species: np.ndarray | None = None,
-):
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Return graph, bin, ranked-cluster and component data for each frame."""
     graph_rows, bins_rows, ranks_rows = [], [], []
     n_molecules = len(lengths)
@@ -75,7 +77,7 @@ def component_frame_rows(
     return pd.DataFrame(graph_rows), pd.DataFrame(bins_rows), pd.DataFrame(ranks_rows)
 
 
-def contact_frame_rows(pairing_npz, molecule_lookup: np.ndarray,
+def contact_frame_rows(pairing_npz: Mapping[str, np.ndarray] | np.lib.npyio.NpzFile, molecule_lookup: np.ndarray,
                        particle_recurrence: bool = False,
                        recurrence_window: int = 20) -> pd.DataFrame:
     """Count accepted particle pairs by type; optionally compute particle recurrence."""
