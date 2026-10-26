@@ -1,8 +1,16 @@
 """Connected molecular components, cluster-size bins and ranked clusters."""
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from typing import TypedDict
 import numpy as np
+
+class ComponentRecord(TypedDict):
+    molecule_ids: np.ndarray
+    cluster_size_molecules: int
+    cluster_size_particles: int
+    cluster_particle_fraction: float
+
 
 MOLECULE_BINS = ("mono", "di", "tri", "4-9", "10-19", "20-49", "50+")
 PARTICLE_BINS = ("mono", "<2%", "2-<3%", "3-<10%", "10-<20%", "20-<50%", ">=50%")
@@ -43,7 +51,7 @@ def connected_components(
     return [np.asarray(ids, dtype=int) for ids in groups.values()]
 
 
-def component_records(components: Iterable[np.ndarray], lengths: np.ndarray):
+def component_records(components: Iterable[np.ndarray], lengths: np.ndarray) -> Iterator[ComponentRecord]:
     """Minimal per-component information. Particle fraction uses N_particles."""
     lengths = np.asarray(lengths, dtype=int)
     total = int(lengths.sum())
@@ -93,7 +101,7 @@ def particle_size_bin(size: int, particle_fraction: float) -> str:
     return ">=50%"
 
 
-def cluster_bin_fractions(components: Iterable[np.ndarray], lengths: np.ndarray):
+def cluster_bin_fractions(components: Iterable[np.ndarray], lengths: np.ndarray) -> dict[str, dict[str, float]]:
     """Fractions of *particles* in each cluster-size category for both schemes."""
     by_molecules = dict.fromkeys(MOLECULE_BINS, 0.0)
     by_particles = dict.fromkeys(PARTICLE_BINS, 0.0)
@@ -105,7 +113,7 @@ def cluster_bin_fractions(components: Iterable[np.ndarray], lengths: np.ndarray)
     return {"molecule_count": by_molecules, "particle_percentage": by_particles}
 
 
-def ranked_components(components: Iterable[np.ndarray], lengths: np.ndarray):
+def ranked_components(components: Iterable[np.ndarray], lengths: np.ndarray) -> list[tuple[str, np.ndarray]]:
     """Rank multimers by particle count; retain all monomer material as one class.
 
     Return (rank_label, molecule_ids), including empty ranks for absent components.
@@ -127,7 +135,7 @@ def ranked_components(components: Iterable[np.ndarray], lengths: np.ndarray):
 
 
 def ranked_cluster_rows(components: Iterable[np.ndarray], lengths: np.ndarray,
-                        species: np.ndarray | None = None):
+                        species: np.ndarray | None = None) -> list[dict[str, str | int | float]]:
     """Particle-weighted ranked cluster material; species columns if supplied."""
     lengths = np.asarray(lengths, dtype=int)
     total = int(lengths.sum())
