@@ -205,3 +205,11 @@ No monomer/oligomer/droplet *threshold classification* is computed.
 Monomers remain a legitimate cluster-size bin and ranked material class.
 The original thesis's 2D density projections require an explicit optional
 GSD visualization step and are not recreated by the compiled tables.
+
+## Output management and smoke fixture
+
+See [FIGURES.md](FIGURES.md) for saving notebook figures and selectively
+publishing results from the existing per-sweep directories. The full
+GSD-to-summary demonstration is described in
+[tests/README.md](tests/README.md). That optional integration smoke test is
+separate from the synthetic CPU regression tests and is not yet automated.
