@@ -7,6 +7,16 @@ channels:
 dependencies:
   - python=3.13
   - pip
+  # Simulation and GPU build dependencies (custom SQD plugin installed separately).
+  - hoomd
+  - cuda-cudart
+  - cuda-nvcc
+  - cuda-libraries-dev
+  - cmake
+  - pybind11
+  - git
+  - viennarna
+  - fresnel
   - numpy
   - pandas
   - scipy
