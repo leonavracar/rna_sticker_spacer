@@ -16,9 +16,11 @@ implementations.
 
 1. Install `analysis/requirements.txt` and open Jupyter from the
    repository checkout.
-2. Download/clone the curated **full-sweep** CSVs in
-   `data/processed/<sweep>/replicates.csv` and `summary.csv`.
-   See [data/README.md](../../data/README.md) for the list of required sweeps.
+2. Point the notebook data loader at the existing `analysis_results/` directory
+   on the HPC system (or at a locally mounted copy of that same directory).
+   For example, the full-sweep tables are already located at
+   `analysis_results/50b_reentrant_full/summary.csv` and `replicates.csv`.
+   No additional `data/processed/` staging directory is required.
 3. Open `jupyter lab analysis/notebooks/` and execute each notebook top to
    bottom. The default scientific figures need only those CSV files; no
    production GSD, NPZ or SQLite files are required.
