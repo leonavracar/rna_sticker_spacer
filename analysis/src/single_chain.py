@@ -1,17 +1,25 @@
 """Single-chain conformation and ViennaRNA secondary-structure comparison."""
 from __future__ import annotations
+
+from collections.abc import Mapping
+from pathlib import Path
+from typing import TYPE_CHECKING
+
 import numpy as np
 import pandas as pd
 
+if TYPE_CHECKING:
+    import gsd.hoomd
 
-def mfe_pairs_from_csv(path) -> set[tuple[int, int]]:
+
+def mfe_pairs_from_csv(path: str | Path) -> set[tuple[int, int]]:
     data = pd.read_csv(path)
     if not {"i","j"}.issubset(data):
         raise ValueError("MFE CSV requires columns i,j")
     return {tuple(sorted((int(a), int(b)))) for a,b in zip(data["i"],data["j"])}
 
 
-def single_chain_framewise(pairing_npz, mfe_pairs: set[tuple[int,int]],
+def single_chain_framewise(pairing_npz: Mapping[str, np.ndarray] | np.lib.npyio.NpzFile, mfe_pairs: set[tuple[int,int]],
                            index_offset: int = 1) -> pd.DataFrame:
     rows = []
     for f in pairing_npz["frame_indices"]:
@@ -26,7 +34,7 @@ def single_chain_framewise(pairing_npz, mfe_pairs: set[tuple[int,int]],
     return pd.DataFrame(rows)
 
 
-def radius_of_gyration(frame, nm_per_sim_length_unit: float) -> float:
+def radius_of_gyration(frame: gsd.hoomd.Frame, nm_per_sim_length_unit: float) -> float:
     """Return radius of gyration in nanometers for a periodic trajectory frame."""
     if nm_per_sim_length_unit <= 0:
         raise ValueError("nm_per_sim_length_unit must be positive")
@@ -38,7 +46,7 @@ def radius_of_gyration(frame, nm_per_sim_length_unit: float) -> float:
 
 
 def add_gsd_geometry(
-    df: pd.DataFrame, trajectory_path, nm_per_sim_length_unit: float
+    df: pd.DataFrame, trajectory_path: str | Path, nm_per_sim_length_unit: float
 ) -> pd.DataFrame:
     import gsd.hoomd
     out = df.copy()
