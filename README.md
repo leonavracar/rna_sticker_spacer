@@ -13,7 +13,9 @@ produces scientific figures through Jupyter notebooks.
 - [Environment setup](analysis/ENVIRONMENT.md) — CPU analysis and tests,
   optional GSD processing, and how to export the research Conda environment.
 - [Analysis notebooks](analysis/notebooks/README.md) — the four research
-  questions and figures.
+  questions and figures, using published CSVs by default.
+- [Curated research data](data/README.md) — where to put the ten full-sweep
+  CSVs and the optional projection PNG / interactive network HTML exports.
 - [Automated tests](.github/workflows/analysis-tests.yml) — GitHub Actions
   runs the existing scientific, pipeline and plotting tests on Python 3.11.
   The CI suite requires no GPU or HOOMD-blue installation.
