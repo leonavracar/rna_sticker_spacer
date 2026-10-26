@@ -86,11 +86,11 @@ def panels_by(
     return fig, axes
 
 
-def plot_panels(items: list, plot_fn, title_fn=str,
+def plot_panels(items: list[Any], plot_fn: Callable[[Any, plt.Axes], Any], title_fn: Callable[[Any], str] = str,
                 n_cols: int = 3,
                 figsize_per_panel: tuple[float, float] = (4., 4.),
                 suptitle: str | None = None,
-                sharex: bool = False, sharey: bool = False):
+                sharex: bool = False, sharey: bool = False) -> tuple[plt.Figure, np.ndarray]:
     """Draw panels from a list of inputs."""
     if not items or n_cols < 1:
         raise ValueError("Must supply items and n_cols >= 1")
