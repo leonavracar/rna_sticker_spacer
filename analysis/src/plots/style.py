@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Mapping, Any
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 # Preserve the original seven-bin palette from analysis_scripts/plots_ps.py.
 BIN_COLORS = (
@@ -135,7 +136,7 @@ class PlotStyle:
             "savefig.dpi": self.dpi,
         }
 
-    def attraction_palette(self, values) -> dict:
+    def attraction_palette(self, values: Sequence[float]) -> dict[float, str]:
         """Use one consistent attraction color across every validation panel."""
         return {
             value: self.attraction_colors[i % len(self.attraction_colors)]
