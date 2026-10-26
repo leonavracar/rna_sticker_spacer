@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import numpy as np
 import networkx as nx
+import numpy as np
 
 NODE_COLORS = {"cag10": "#56A9D5", "cag47": "#F05252"}
 EDGE_COLORS = {
