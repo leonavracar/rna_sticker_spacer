@@ -122,3 +122,51 @@ def test_mixture_gsd_end_to_end(tmp_path: Path) -> None:
     assert row["largest_fraction_total_particles"] <= 1.0
     for metric in ("n_base_pairs", "n_edges", "n_inter_contacts", "n_intra_contacts"):
         assert np.isfinite(row[metric]), metric
+
+    # Independently reconstruct late-window contact means from cached arrays.
+    # This cross-check does not use analyze_trajectory or SQLite aggregation.
+    pairing_file = (
+        generated / "eatt2" / "computed_metrics" / "pairing" /
+        "trajectory_0_pairing.npz"
+    )
+    molecule_ids = np.load(
+        generated / "eatt2" / "computed_metrics" / "pairing" /
+        "molecule_lookup.npy"
+    )
+    with np.load(pairing_file) as pairing:
+        all_frames = np.asarray(pairing["frame_indices"], dtype=int)
+        assert len(all_frames) >= 10, "Fixture must cover the late-window average"
+        n_keep = max(1, int(np.ceil(len(all_frames) * 0.10)))
+        last_frames = all_frames[-n_keep:]
+        pair_counts: list[int] = []
+        intra_counts: list[int] = []
+        for frame in last_frames:
+            left = np.asarray(pairing[f"qi_{frame}"], dtype=int)
+            right = np.asarray(pairing[f"pi_{frame}"], dtype=int)
+            pair_counts.append(len(left))
+            intra_counts.append(int(np.count_nonzero(
+                molecule_ids[left] == molecule_ids[right]
+            )))
+    assert row["n_base_pairs"] == pytest.approx(np.mean(pair_counts))
+    assert row["n_intra_contacts"] == pytest.approx(np.mean(intra_counts))
+    assert row["n_inter_contacts"] == pytest.approx(
+        np.mean(np.subtract(pair_counts, intra_counts))
+    )
+
+    graph_file = (
+        generated / "eatt2" / "computed_metrics" / "mol_graph" /
+        "trajectory_0_molecule_contact_edges.npz"
+    )
+    with np.load(graph_file) as graph:
+        edge_frames = np.asarray(graph["frame"], dtype=int)
+        contact_weights = np.asarray(graph["n_contacts"], dtype=int)
+        qualified_counts = [
+            int(np.count_nonzero(
+                (edge_frames == frame) & (contact_weights >= 2)
+            ))
+            for frame in last_frames
+        ]
+    assert row["n_edges"] == pytest.approx(np.mean(qualified_counts))
+    assert row["mean_degree"] == pytest.approx(
+        2.0 * np.mean(qualified_counts) / 285
+    )
