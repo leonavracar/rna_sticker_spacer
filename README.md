@@ -2,6 +2,22 @@
 
 A simplified one-particle-per-base RNA sticker-spacer model for HOOMD-blue molecular dynamics simulations. This model represents RNA molecules using individual particles for A, U, G, and C bases with Watson-Crick pairing interactions.
 
+## Reproducible RNA analysis
+
+The [analysis pipeline](analysis/README.md) calculates nucleotide pairing,
+molecular contact graphs, cluster statistics and per-condition summaries for
+single-chain validation, reentrance, length/patterning and mixed-RNA systems.
+It stores trajectory checkpoints in SQLite, exports plotting-ready CSVs and
+produces scientific figures through Jupyter notebooks.
+
+- [Environment setup](analysis/ENVIRONMENT.md) — separate CPU analysis,
+  testing and optional GSD-processing dependencies.
+- [Analysis notebooks](analysis/notebooks/README.md) — the four research
+  questions and figures.
+- [Automated tests](.github/workflows/analysis-tests.yml) — GitHub Actions
+  runs the existing scientific, pipeline and plotting tests on Python 3.11
+  and 3.12. The CI suite requires no GPU or HOOMD-blue installation.
+
 ## Overview
 
 This simulation framework implements a coarse-grained RNA model where:
