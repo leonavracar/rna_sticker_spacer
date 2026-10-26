@@ -1,62 +1,37 @@
-# Public, curated analysis data
+# Analysis data and reproducibility
 
-This directory contains only the small files needed to reproduce the
-**reported scientific figures**, plus selected illustrations. No complete
-simulation sweeps, SQLite checkpoints, or full-trajectory NPZ archives are
-distributed with the repository.
+The analysis pipeline writes results directly to the configured HPC output root,
+under a directory named after each input sweep. This is the only canonical
+location for generated CSVs and analysis caches.
 
-## Structure
+For example:
 
-- `processed/<sweep>/replicates.csv` — each independent simulation trajectory.
-- `processed/<sweep>/summary.csv` — per-condition aggregate statistics.
-- `figures/reentrance_xy.png`, `figures/length_xy.png` — representative
-  final-frame spatial projections, exported on the HPC system.
-- `networks/mixture_Eatt{2,4,8}_network.html` — optional standalone PyVis
-  visualizations, exported from graph NPZ files.
-
-The notebooks in `analysis/notebooks/` use the published CSV directory
-`data/processed/` and do **not** require raw simulation files for their
-default figure cells.
-
-## Copy the completed sweeps
-
-Run from the repository root on the HPC system, **after** full-sweep analysis
-has finished:
-
-```bash
-mkdir -p data/processed
-for sweep in \
-  53c_single_mol_duplex \
-  50b_reentrant_full \
-  51a_repeat_number \
-  51b_repeat_number_rand \
-  52b_from_frame; do
-    mkdir -p "data/processed/$sweep"
-    cp "analysis_results/$sweep/replicates.csv" \
-       "analysis_results/$sweep/summary.csv" \
-       "data/processed/$sweep/"
-done
+```text
+/groups/goloborodko/projects/leona/rna_sticker_spacer/analysis_results/
+  50b_reentrant_full/
+    analysis.sqlite
+    replicates.csv
+    summary.csv
+    <parameter-run>/computed_metrics/
 ```
 
-Verify that all ten CSVs are complete and correspond to the **original full
-sweeps** before committing. In particular, do not replace original research
-results with the shortened demonstration trajectory's `summary.csv`: that
-example has one trajectory and a different effective averaging window.
+The repository does **not** require a second `data/processed/` directory.
+Do not copy sweep CSVs merely to run notebooks. Pass the existing
+`analysis_results/` root to the notebook data-loading functions, or set
+`RNA_ANALYSIS_RESULTS_ROOT` after the loader supports that environment variable.
+Until then, set the notebooks' data-root variable explicitly to the full
+analysis-results path on the HPC system.
 
-The standard pipeline calculates **the final 10% of frames** per trajectory.
-For single-chain validation, CSV columns `Rg_nm` (replicates) and
-`Rg_nm_mean` / `Rg_nm_std` (summary) describe the mean Rg and its
-between-replicate dispersion. This is not the original 20%-window
-within-trajectory percentile interval from the earlier plotting notebook.
+Production trajectories, SQLite checkpoints and NPZ archives are not
+committed to Git. Small, explicitly curated demonstration data and
+figures may be published separately, but must be labeled as snapshots,
+not described as outputs of the active pipeline.
 
-## Optional exports
+The source sweep directory remains separate from the analysis-results
+directory; the pipeline must not modify original simulation outputs.
 
-The projection cells in `02_reentrance.ipynb` and `03_length.ipynb`
-remain opt-in; they read final GSD frames from the original HPC paths. Export
-the figures to PNG and embed them in notebook Markdown. The mixture notebook
-has opt-in PyVis HTML export from cached molecular graph NPZ files. Standalone
-HTML may be downloaded and opened in a local browser; GitHub's notebook
-preview will not execute its JavaScript.
+## Optional visual exports
 
-The separate `examples/mixture/eatt2/` directory is a **50-frame pipeline
-demonstration** and is not input to the published statistical plots.
+Final-frame GSD projections and PyVis networks are optional exports. Keep
+their destinations configurable and do not treat exported images or HTML as
+canonical numerical analysis results.
