@@ -14,17 +14,17 @@ implementations.
 
 ## Quick start
 
-1. Analyze the relevant **complete** sweep(s) with
-   `python analysis/run_pipeline.py --stage all ...`. A single run ID is enough
-   to smoke-test the pipeline, but is **not enough** to create all figures
-   spanning the E_att/stiffness/length parameter grid.
-2. Keep outputs under `analysis_results/<actual-input-sweep>/`, containing
-   `replicates.csv` and `summary.csv`. No figure needs a legacy analysis CSV.
-3. Start Jupyter from within the repository checkout and open the notebook:
-   `jupyter lab analysis/notebooks/`. Configure only the sweep-name cell and,
-   when needed, the desired density/stiffness conditions.
-4. Execute top to bottom. Figures appear inline; use Matplotlib's
-   `fig.savefig(..., dpi=300, bbox_inches="tight")` to export curated artwork.
+1. Install `analysis/requirements.txt` and open Jupyter from the
+   repository checkout.
+2. Download/clone the curated **full-sweep** CSVs in
+   `data/processed/<sweep>/replicates.csv` and `summary.csv`.
+   See [data/README.md](../../data/README.md) for the list of required sweeps.
+3. Open `jupyter lab analysis/notebooks/` and execute each notebook top to
+   bottom. The default scientific figures need only those CSV files; no
+   production GSD, NPZ or SQLite files are required.
+4. Only when original trajectory data are available, turn on the optional
+   projection/PyVis export cells. Published PNGs and HTMLs can be viewed
+   separately without running those cells.
 
 The notebooks never need to import HOOMD-blue. The base plotting dependencies
 are `pandas`, `numpy`, `matplotlib` and `seaborn`. The optional GSD
@@ -96,11 +96,21 @@ projection reproduces the **representative final XY frame**, not pooled
 densities, 1D profiles or RDFs. Both plots use the same code and shared
 color normalization across the grid.
 
-RQ3 exports one standalone HTML network per attraction strength
-(`E_att = 2, 4, 8`) to `analysis_results/52b_from_frame/networks/clusters/`.
+RQ3 can export one standalone HTML network per attraction strength
+(`E_att = 2, 4, 8`) from the corresponding graph NPZ and molecule lookup.
 Each network uses the final cached trajectory frame, excludes unconnected
 molecules, colors RNA species by node and contact type by edge, and keeps
-physics disabled. Set `EXPORT_PYVIS = False` to skip this step.
+physics disabled. `EXPORT_PYVIS = False` is the default.
+
+The Rg panel in the single-chain validation notebook plots each replicate's
+final-10%-window mean Rg and the **mean ± standard deviation across
+replicates**, entirely from `replicates.csv` and `summary.csv`.
+The earlier frame-percentile plot (final 20%) remains available in the
+`load_rg_frames` helper but is no longer required by the public notebook.
+
+GitHub renders notebook Markdown and static images but not live PyVis
+JavaScript. Keep published HTML files separately, link to them from the
+Markdown, and open them locally for interactivity.
 
 Optional framewise trace helpers remain in `src/plots/framewise.py` and are
 **not included in the four notebooks**.
