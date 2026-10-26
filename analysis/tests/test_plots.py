@@ -13,15 +13,21 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.plots.style import PlotStyle, MOLECULE_BINS, RANKS
-from src.plots.data import melt_metrics, filter_rows
+from src.plots.style import PlotStyle, MOLECULE_BINS, RANKS, RANK_COLORS
+from src.plots.data import melt_metrics, filter_rows, load_rg_frames
 from src.plots.figures import (
     plot_cluster_bins, plot_largest_contact_composition,
-    plot_metric_series, plot_mixture_ranked_bars,
+    plot_metric_series, plot_mixture_ranked_bars, plot_largest_cluster_metric,
+    plot_ranked_condition, plot_precision_recall, plot_mfe_pairing_scatter,
+    plot_rg_validation, plot_ranked_clusters, plot_metric_points,
+    plot_contact_balance,
+)
+from src.plots.networks import (
+    _frame_edges, _cluster_graph, _layout_clusters, _contact_type,
+    NODE_COLORS, EDGE_COLORS,
 )
 from src.plots.panels import panels_by
 from src.plots.projections import repeat_count, projection_xy
-
 
 STYLE = PlotStyle()
 
@@ -113,7 +119,6 @@ def test_final_frame_projection_and_repeat_labels() -> None:
 
 
 def test_eatt_series_uses_evenly_spaced_categorical_ticks() -> None:
-    from src.plots.figures import plot_metric_series, plot_contact_balance
     source = pd.DataFrame({
         "E_att": [1., 2., 4., 6., 8., 12., 16., 32.],
         "n_edges_mean": [0, 1, 2, 3, 4, 5, 6, 7],
@@ -143,7 +148,6 @@ def test_eatt_series_uses_evenly_spaced_categorical_ticks() -> None:
 
 
 def test_faceted_cluster_bin_legend_appears_once() -> None:
-    from src.plots.style import MOLECULE_BINS
     source = {
         "angle_k_ppp": [0., 2.5, 5.],
         "E_att": [2., 2., 2.],
@@ -163,7 +167,6 @@ def test_faceted_cluster_bin_legend_appears_once() -> None:
 
 
 def test_thesis_largest_cluster_figure_is_categorical_bars() -> None:
-    from src.plots.figures import plot_largest_cluster_metric
     df = pd.DataFrame({
         "E_att": [2., 4., 8.],
         "largest_mean_degree_mean": [5., 4., 7.],
@@ -181,8 +184,6 @@ def test_thesis_largest_cluster_figure_is_categorical_bars() -> None:
 
 
 def test_pure_and_mixed_ranked_condition_plot_contract() -> None:
-    from src.plots.figures import plot_ranked_condition
-    from src.plots.style import RANKS
     pure = {"E_att": [2.]}
     mix = {"E_att": [2.]}
     for r in RANKS:
@@ -205,7 +206,6 @@ def test_pure_and_mixed_ranked_condition_plot_contract() -> None:
 
 
 def test_validation_scatter_uses_shared_discrete_attraction_colors() -> None:
-    from src.plots.figures import plot_mfe_pairing_scatter, plot_precision_recall
     frame = pd.DataFrame({
         "E_att": [2., 2., 4., 4.],
         "mfe_matches": [8, 9, 11, 12],
@@ -227,7 +227,6 @@ def test_validation_scatter_uses_shared_discrete_attraction_colors() -> None:
 
 def test_validation_rg_reads_replicate_sd_from_exported_csv() -> None:
     """The published validation plot needs no per-frame Rg NPZ archives."""
-    from src.plots.figures import plot_rg_validation
 
     summary = pd.DataFrame({
         "E_att": [2., 4.],
@@ -255,7 +254,6 @@ def test_validation_rg_reads_replicate_sd_from_exported_csv() -> None:
 
 
 def test_validation_rg_has_replicate_points_and_percentile_errorbars() -> None:
-    from src.plots.figures import plot_rg_validation
     summary = pd.DataFrame({
         "E_att": [2., 4.],
         "Rg_nm_mean": [1.3, 1.7],
@@ -277,8 +275,6 @@ def test_validation_rg_has_replicate_points_and_percentile_errorbars() -> None:
 
 
 def test_ranked_length_stacks_show_molecule_counts_and_thesis_palette() -> None:
-    from src.plots.figures import plot_ranked_clusters
-    from src.plots.style import RANK_COLORS, RANKS
 
     assert RANK_COLORS[0] == "#EF3659"
     assert RANK_COLORS[-1] == "#59A8D6"
@@ -306,7 +302,6 @@ def test_ranked_length_stacks_show_molecule_counts_and_thesis_palette() -> None:
 
 
 def test_rq1_thesis_boxplots_are_neutral_with_individual_replicates() -> None:
-    from src.plots.figures import plot_metric_points
     df = pd.DataFrame({
         "E_att": [1., 1., 2., 2., 4., 4.],
         "n_edges": [2., 3., 100., 110., 200., 205.],
@@ -320,7 +315,6 @@ def test_rq1_thesis_boxplots_are_neutral_with_individual_replicates() -> None:
 
 
 def test_ranked_condition_pure_count_labels() -> None:
-    from src.plots.figures import plot_ranked_condition
     frame = {"E_att": [2.]}
     for rank in RANKS:
         frame[f"rank_{rank}_fraction_particles_mean"] = [
@@ -338,7 +332,6 @@ def test_ranked_condition_pure_count_labels() -> None:
 
 
 def test_network_uses_last_saved_trajectory_frame(tmp_path: Path) -> None:
-    from src.plots.networks import _frame_edges
 
     archive = tmp_path / "graph.npz"
     np.savez(
@@ -356,7 +349,6 @@ def test_network_uses_last_saved_trajectory_frame(tmp_path: Path) -> None:
 
 def test_cluster_network_excludes_monomers() -> None:
     pytest.importorskip("networkx")
-    from src.plots.networks import _cluster_graph
 
     graph = _cluster_graph([(0, 1, 2), (1, 2, 4), (5, 6, 3)])
     assert set(graph.nodes) == {0, 1, 2, 5, 6}
@@ -365,7 +357,6 @@ def test_cluster_network_excludes_monomers() -> None:
 
 
 def test_network_colors_match_original_html() -> None:
-    from src.plots.networks import NODE_COLORS, EDGE_COLORS
 
     assert NODE_COLORS == {"cag10": "#56A9D5", "cag47": "#F05252"}
     assert EDGE_COLORS["cag10_cag47"] == "#AC79C3"
@@ -374,7 +365,6 @@ def test_network_colors_match_original_html() -> None:
 
 
 def test_rg_frame_intervals_use_last_twenty_percent(tmp_path: Path) -> None:
-    from src.plots.data import load_rg_frames
 
     sweep = "validation_test"
     run = "0_test"
@@ -399,7 +389,6 @@ def test_rg_frame_intervals_use_last_twenty_percent(tmp_path: Path) -> None:
 
 
 def test_mixture_network_colors_follow_pair_species() -> None:
-    from src.plots.networks import _contact_type
 
     assert _contact_type("cag10", "cag10") == "cag10_cag10"
     assert _contact_type("cag47", "cag47") == "cag47_cag47"
@@ -413,7 +402,6 @@ def test_mixture_network_colors_follow_pair_species() -> None:
 
 
 def test_contact_legend_and_annotations_match_thesis() -> None:
-    from src.plots.figures import plot_largest_contact_composition
 
     data = pd.DataFrame({
         "E_att": [2., 4.],
@@ -436,7 +424,6 @@ def test_contact_legend_and_annotations_match_thesis() -> None:
 
 def test_network_component_layout_keeps_clusters_separate() -> None:
     pytest.importorskip("networkx")
-    from src.plots.networks import _cluster_graph, _layout_clusters
 
     graph = _cluster_graph([(0, 1, 4), (1, 2, 3), (4, 5, 2)])
     coords = _layout_clusters(graph)
