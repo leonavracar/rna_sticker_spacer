@@ -127,3 +127,20 @@ Tests cover the four analysis profiles and plotting utilities with synthetic
 data. Review the compiled CSVs for full sweeps before interpreting results.
 The legacy notebooks and exported HTML under `notebooks/` remain intact
 as references; this new workflow does not depend on their outputs.
+
+## Automatic figure exports
+
+Each curated notebook sets `SAVE_FIGURES = True` in its setup cell and
+saves PNGs beside the relevant sweep under
+`analysis_results/<sweep>/figures/`. Set `SAVE_FIGURES = False` to
+avoid writing files. `RNA_ANALYSIS_RESULTS_ROOT` overrides the output root.
+The RQ2 notebook writes joint plots using the periodic sweep's figures
+folder; its figures can still use both periodic and scrambled CSVs.
+Optional GSD projections retain a separate input trajectory path and are
+saved as `reentrance_xy.png` or `length_xy.png` when enabled.
+
+These generated files can be included in the repository only if the
+`analysis_results` directory lies within the checkout (or selected files
+are copied into the checkout). The `.gitignore` allows reviewed
+`summary.csv`, `replicates.csv`, and PNG/PDF files under `figures/`
+but not large intermediates or SQLite checkpoints.
