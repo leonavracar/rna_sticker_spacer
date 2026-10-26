@@ -2,8 +2,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import networkx as nx
+
+if TYPE_CHECKING:
+    from pyvis.network import Network
 
 NODE_COLORS = {"cag10": "#56A9D5", "cag47": "#F05252"}
 EDGE_COLORS = {
@@ -41,16 +46,14 @@ def _contact_type(species_a: str, species_b: str) -> str:
     return "cag10_cag47"
 
 
-def _cluster_graph(edges: list[tuple[int, int, int]]):
+def _cluster_graph(edges: list[tuple[int, int, int]]) -> nx.Graph:
     """Build a contact graph containing only molecules with edges."""
-    import networkx as nx
-
     graph = nx.Graph()
     graph.add_weighted_edges_from(edges)
     return graph
 
 
-def _layout_clusters(graph):
+def _layout_clusters(graph: nx.Graph) -> dict[int, np.ndarray]:
     """Place disconnected molecular clusters without overlapping them."""
     import networkx as nx
 
