@@ -1,8 +1,13 @@
 """Detect complementary nucleotide contacts in GSD trajectories."""
 
+from __future__ import annotations
+
+
 import numpy as np
 import freud
 import gsd.hoomd
+
+from .single_chain import radius_of_gyration
 
 def get_nlist(
     frame: gsd.hoomd.Frame, r_max: float = 0.7
@@ -37,7 +42,7 @@ def make_molecule_lookup_table(frame: gsd.hoomd.Frame) -> np.ndarray:
     return np.repeat(mol_ids, mol_lengths)
 
 
-def make_complementary_indexes(frame: gsd.hoomd.Frame) -> dict:
+def make_complementary_indexes(frame: gsd.hoomd.Frame) -> dict[int, int]:
     """Build a lookup table mapping each base type index to its complement type index."""
     types = frame.particles.types
 
@@ -65,7 +70,7 @@ def unique_mask(nlist: freud.NeighborList) -> np.ndarray:
 def complementary_mask(
     nlist: freud.locality.NeighborList,
     typeids: np.ndarray,
-    comp_map: dict,
+    comp_map: dict[int, int],
 ) -> np.ndarray:
     """Returns a boolean mask for pairs that are valid A-U or G-C complements..
 
@@ -117,7 +122,7 @@ def neighbor_exclusion_mask(
     return ~n_exc_mask
 
 
-def valency_mask(qi, pi, distances, r_opt=0.5):
+def valency_mask(qi: np.ndarray, pi: np.ndarray, distances: np.ndarray, r_opt: float = 0.5) -> np.ndarray:
     """Retain a pair only when both particles prefer each other by distance to r_opt."""
     if len(qi) == 0:
         return np.zeros(0, dtype=bool)
@@ -209,8 +214,6 @@ def compute_filtered_nlist_base_pairs_traj(
     rg_nm_per_sim_length_unit: float | None = None,
 ) -> dict[str, np.ndarray]:
     """Collect contacts and optional single-chain Rg from the *same* GSD frame read."""
-    if rg_nm_per_sim_length_unit is not None:
-        from .single_chain import radius_of_gyration
     nlist_dict = {}
     n_frames = len(traj)
     sampled_indices = range(0, n_frames, stride)
