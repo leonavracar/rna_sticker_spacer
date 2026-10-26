@@ -29,6 +29,10 @@ bulk/pipeline_logs
 *.xtc
 *.png
 
+# Explicit exceptions for small, reviewed public demonstration/figure assets.
+# Full simulation trajectories and generated SQLite/NPZ files stay ignored.
+!/examples/mixture/eatt2/trajectory_0.gsd
+!/data/figures/*.png
 
 # Environment / local config
 .env
