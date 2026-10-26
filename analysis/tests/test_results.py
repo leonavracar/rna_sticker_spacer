@@ -5,14 +5,11 @@ No real trajectories or GSD/freud dependencies are needed for these tests.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.framewise import component_frame_rows, summarize_numeric
 from src.mixtures import mixture_cluster_rows
@@ -20,7 +17,7 @@ from src.results import export_sweep, metrics_from_analysis, save_checkpoint
 from src.single_chain import single_chain_framewise
 
 
-def metadata(trajectory="trajectory_0", sequence="mixed", molecule_file="cag10x235_cag47x50.json"):
+def metadata(trajectory: str = "trajectory_0", sequence: str = "mixed", molecule_file: str = "cag10x235_cag47x50.json") -> dict[str, object]:
     return {
         "folder_name": "0_E_att_2_density_0.005",
         "traj_replicate": trajectory,
@@ -41,7 +38,7 @@ def metadata(trajectory="trajectory_0", sequence="mixed", molecule_file="cag10x2
     }
 
 
-def test_wide_columns_preserve_ranked_species_and_contact_type():
+def test_wide_columns_preserve_ranked_species_and_contact_type() -> None:
     info = metadata()
     summary = {**info, "n_base_pairs": 1477.76, "n_edges": 309.695,
                "inter_particle_contacts_total": 1245.935,
@@ -83,7 +80,7 @@ def test_wide_columns_preserve_ranked_species_and_contact_type():
     assert "mol_contacts_total" not in metrics
 
 
-def test_checkpoint_export_one_row_per_replicate_and_energy_join(tmp_path):
+def test_checkpoint_export_one_row_per_replicate_and_energy_join(tmp_path: Path) -> None:
     sweep = tmp_path / "52b_from_frame"
     db = sweep / "analysis.sqlite"
     for i, pairs in enumerate((100., 110., 120.)):
@@ -115,7 +112,7 @@ def test_checkpoint_export_one_row_per_replicate_and_energy_join(tmp_path):
     assert not (tmp_path / "compiled").exists()
 
 
-def test_rq2_scrambles_are_independent_units(tmp_path):
+def test_rq2_scrambles_are_independent_units(tmp_path: Path) -> None:
     sweep = tmp_path / "51b_repeat_number_rand"
     db = sweep / "analysis.sqlite"
     for i, (sequence, value) in enumerate((
@@ -143,14 +140,14 @@ def test_rq2_scrambles_are_independent_units(tmp_path):
     assert summary.loc[0, "mean_edge_weight_mean"] == pytest.approx(20.)
 
 
-def test_late_window_is_ten_percent_of_frames():
+def test_late_window_is_ten_percent_of_frames() -> None:
     frames = pd.DataFrame({"frame": list(range(20)),
                            "n_base_pairs": list(range(20))})
     result = summarize_numeric(frames, .10, ["n_base_pairs"])
     assert result["n_base_pairs"] == 18.5
 
 
-def test_rq1_rq2_cluster_bins_and_ranks_conserve_material():
+def test_rq1_rq2_cluster_bins_and_ranks_conserve_material() -> None:
     lengths = np.array([30, 30, 30, 30])
     frames = {0: (
         np.array([0, 1]), np.array([1, 2]), np.array([2, 1])
@@ -167,7 +164,7 @@ def test_rq1_rq2_cluster_bins_and_ranks_conserve_material():
     assert largest["fraction_particles"] == pytest.approx(.5)
 
 
-def test_single_chain_mfe_precision_and_recall():
+def test_single_chain_mfe_precision_and_recall() -> None:
     npz = {"frame_indices": np.array([0]),
            "qi_0": np.array([0, 1]),
            "pi_0": np.array([9, 8])}
@@ -179,7 +176,7 @@ def test_single_chain_mfe_precision_and_recall():
     assert measured.loc[0, "recall"] == .5
 
 
-def test_mixture_contacts_and_largest_cluster():
+def test_mixture_contacts_and_largest_cluster() -> None:
     lengths = np.array([30, 30, 141, 141])
     species = np.array(["cag10", "cag10", "cag47", "cag47"])
     graph = {
