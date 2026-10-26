@@ -5,13 +5,17 @@ from collections.abc import Mapping, Sequence
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 from matplotlib.axes import Axes
+from matplotlib.colors import to_rgb
+from matplotlib.patches import Patch
+from matplotlib.ticker import MaxNLocator
 
 from .data import require_columns
-from .style import BIN_COLORS, PlotStyle
+from .style import BIN_COLORS, MOLECULE_BINS, PARTICLE_BINS, RANKS, PlotStyle
 
 
-def _x_positions(df: pd.DataFrame, x: str) -> tuple[list, np.ndarray]:
+def _x_positions(df: pd.DataFrame, x: str) -> tuple[list[float], np.ndarray]:
     values = sorted(df[x].dropna().unique())
     return values, np.arange(len(values), dtype=float)
 
@@ -31,7 +35,7 @@ def _format_axis(ax: Axes, *, style: PlotStyle, xlabel: str, ylabel: str,
 
 def _categorical_axis(
     df: pd.DataFrame, x: str, order: Sequence | None = None,
-) -> tuple[list, np.ndarray]:
+) -> tuple[list[float], np.ndarray]:
     """Equally spaced positions for measured parameters, not numeric gaps."""
     values = list(order) if order is not None else sorted(df[x].dropna().unique())
     if not values:
@@ -42,7 +46,7 @@ def _categorical_axis(
     return values, np.arange(len(values), dtype=float)
 
 
-def _set_categorical_ticks(ax: Axes, values: Sequence) -> None:
+def _set_categorical_ticks(ax: Axes, values: Sequence[float | str]) -> None:
     ax.set_xticks(np.arange(len(values)), [
         f"{value:g}" if isinstance(value, (int, float, np.number))
         else str(value) for value in values
@@ -199,7 +203,6 @@ def plot_metric_points(
             )
         _set_categorical_ticks(ax, categories)
     else:
-        import seaborn as sns
         kwargs = {"data": d, "x": x, "y": metric, "hue": hue, "ax": ax}
         if palette is not None:
             kwargs["palette"] = palette
@@ -267,7 +270,6 @@ def plot_stacked_fractions(
             counts = d[annotation_columns[i]].to_numpy(dtype=float)
             for xpos, height, base, count in zip(positions, heights, bottom, counts):
                 if height >= annotate_min_height and np.isfinite(count):
-                    from matplotlib.colors import to_rgb
                     rgb = to_rgb(palette[i])
                     brightness = .2126*rgb[0] + .7152*rgb[1] + .0722*rgb[2]
                     ax.text(xpos, base + height / 2, f"{count:.0f}",
@@ -290,7 +292,6 @@ def plot_cluster_bins(
     style: PlotStyle, x: str = "E_att",
 ) -> Axes:
     """Stacked RQ1 molecule-count or RQ2 particle-percentage bin fractions."""
-    from .style import MOLECULE_BINS, PARTICLE_BINS
     if scheme not in ("molecule_count", "particle_percentage"):
         raise ValueError("Unknown cluster-bin scheme")
     categories = MOLECULE_BINS if scheme == "molecule_count" else PARTICLE_BINS
@@ -307,7 +308,6 @@ def plot_ranked_clusters(
     annotate_molecules: bool = False,
 ) -> Axes:
     """Plot ranked cluster fractions with optional molecule counts."""
-    from .style import RANKS
     columns = [f"rank_{rank}_fraction_particles_mean" for rank in RANKS]
     counts = ([f"rank_{rank}_n_molecules_mean" for rank in RANKS]
               if annotate_molecules else None)
@@ -325,7 +325,6 @@ def plot_ranked_condition(
     annotate_molecules: bool = False, color: str = "#4389BE",
 ) -> Axes:
     """Plot ranked-cluster particle fractions for one condition."""
-    from .style import RANKS
     if len(df) != 1:
         raise ValueError("Filter to exactly one E_att, stiffness and density first")
     row = df.iloc[0]
@@ -393,7 +392,6 @@ def plot_mixture_ranked_bars(
     Heights are fractions of ALL system particles, not of the rank alone.
     Sums over all rank and species combinations must equal 1 for each condition.
     """
-    from .style import RANKS
     if conditions is None:
         conditions = sorted(df["E_att"].dropna().unique())
     d = df[df["E_att"].isin(conditions)].copy()
@@ -415,7 +413,6 @@ def plot_mixture_ranked_bars(
     if not np.allclose(d[fraction_columns].fillna(0).sum(axis=1), 1, atol=1e-3):
         raise ValueError("Rank/species material must sum to one per condition")
 
-    from matplotlib.patches import Patch
     hatches = ("", "///", "xx", "..", "++", "\\\\")
     centers = np.arange(len(RANKS), dtype=float)
     width = .78 / len(conditions)
@@ -505,7 +502,6 @@ def plot_mfe_pairing_scatter(
     attraction_order: Sequence | None = None,
 ) -> Axes:
     """Show replicate base-pair counts and the mean for each attraction."""
-    from matplotlib.ticker import MaxNLocator
 
     require_columns(df, [x, y, "E_att"])
     strengths, _ = _categorical_axis(df, "E_att", attraction_order)
