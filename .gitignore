@@ -1,48 +1,53 @@
-# Python cache
+# Python and notebooks
 __pycache__/
-*/__pycache__/
-*.pyc
-*.pyo
-
-# Jupyter notebooks and checkpoints
-bulk/troubleshooting/*.ipynb
+*.py[cod]
 .ipynb_checkpoints/
-*/.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+bulk/troubleshooting/*.ipynb
 
-# Simulation outputs
+# Simulation and temporary outputs
 bulk/output_dir/
 bulk/job_output/
 bulk/troubleshooting/
-bulk/pipeline_logs
-# Common large simulation/data files anywhere
-*.gsd
+bulk/pipeline_logs/
 *.log
-*.sqlite
+*.gsd
 *.h5
 *.hdf5
 *.npy
 *.npz
+*.sqlite
+*.sqlite3
+*.db
 *.traj
 *.dat
 *.lammpstrj
 *.dcd
 *.xtc
-*.png
 
-# Explicit exceptions for small, reviewed public demonstration/figure assets.
-# Full simulation trajectories and generated SQLite/NPZ files stay ignored.
-!/examples/mixture/eatt2/trajectory_0.gsd
-!/data/figures/*.png
-
-# Environment / local config
+# Environment and system
 .env
 .venv/
 venv/
 conda-env/
-
-# System files
 .DS_Store
 analysis_scripts/helper_scripts/nohup.out
 
-# Local outputs from the analysis pipeline
-/analysis_results/
+# Canonical generated result tree: only curated CSVs and figures are eligible.
+# Inspect sizes/content before git add. Do not commit SQLite/NPZ/checkpoints.
+# The folders are deliberately NOT ignored: selected outputs can be tracked.
+# Ignore everything under results by default, selectively include small exports.
+/analysis_results/*
+!/analysis_results/*/
+/analysis_results/*/*
+!/analysis_results/*/replicates.csv
+!/analysis_results/*/summary.csv
+!/analysis_results/*/figures/
+/analysis_results/*/figures/*
+!/analysis_results/*/figures/*.png
+!/analysis_results/*/figures/*.pdf
+
+# Curated self-contained demo trajectory (explicitly reviewed).
+!/examples/mixture/eatt2/trajectory_0.gsd
