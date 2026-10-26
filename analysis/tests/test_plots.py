@@ -13,8 +13,6 @@ import numpy as np
 import pandas as pd
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 from src.plots.style import PlotStyle, MOLECULE_BINS, RANKS
 from src.plots.data import melt_metrics, filter_rows
 from src.plots.figures import (
@@ -28,7 +26,7 @@ from src.plots.projections import repeat_count, projection_xy
 STYLE = PlotStyle()
 
 
-def test_labels_and_melt():
+def test_labels_and_melt() -> None:
     assert STYLE.label("E_att").startswith("$")
     assert STYLE.label("Rg_nm_mean") == STYLE.label("Rg_nm")
     source = pd.DataFrame({"E_att": [2., 4.], "n_edges": [3, 7],
@@ -39,7 +37,7 @@ def test_labels_and_melt():
     assert list(filter_rows(source, E_att=2.)["n_edges"]) == [3]
 
 
-def test_partial_panels_plot_summary_series():
+def test_partial_panels_plot_summary_series() -> None:
     summary = pd.DataFrame({
         "angle_k_ppp": [0., 0., 2.5, 2.5],
         "E_att": [2., 4., 2., 4.],
@@ -56,7 +54,7 @@ def test_partial_panels_plot_summary_series():
     plt.close(fig)
 
 
-def test_rq1_bins_stack_to_one():
+def test_rq1_bins_stack_to_one() -> None:
     d = {"E_att": [2., 4.]}
     for idx, category in enumerate(MOLECULE_BINS):
         d[f"cluster_bin_molecule_count_{category}_mean"] = (
@@ -69,7 +67,7 @@ def test_rq1_bins_stack_to_one():
     plt.close(fig)
 
 
-def test_mixture_contacts_are_largest_cluster_fractions():
+def test_mixture_contacts_are_largest_cluster_fractions() -> None:
     d = pd.DataFrame({
         "E_att": [2., 4.],
         "largest_contacts_cag10_cag10_fraction_inter_contacts_mean": [.1, .2],
@@ -85,7 +83,7 @@ def test_mixture_contacts_are_largest_cluster_fractions():
     plt.close(fig)
 
 
-def test_ranked_mixture_material_uses_whole_system_denominator():
+def test_ranked_mixture_material_uses_whole_system_denominator() -> None:
     values = {}
     for rank in RANKS:
         for species in ("cag10", "cag47"):
@@ -99,7 +97,7 @@ def test_ranked_mixture_material_uses_whole_system_denominator():
     plt.close(fig)
 
 
-def test_final_frame_projection_and_repeat_labels():
+def test_final_frame_projection_and_repeat_labels() -> None:
     frame = SimpleNamespace(
         configuration=SimpleNamespace(box=np.array([10., 10., 10., 0., 0., 0.])),
         particles=SimpleNamespace(
@@ -114,7 +112,7 @@ def test_final_frame_projection_and_repeat_labels():
 
 
 
-def test_eatt_series_uses_evenly_spaced_categorical_ticks():
+def test_eatt_series_uses_evenly_spaced_categorical_ticks() -> None:
     from src.plots.figures import plot_metric_series, plot_contact_balance
     source = pd.DataFrame({
         "E_att": [1., 2., 4., 6., 8., 12., 16., 32.],
@@ -144,7 +142,7 @@ def test_eatt_series_uses_evenly_spaced_categorical_ticks():
     plt.close(fig)
 
 
-def test_faceted_cluster_bin_legend_appears_once():
+def test_faceted_cluster_bin_legend_appears_once() -> None:
     from src.plots.style import MOLECULE_BINS
     source = {
         "angle_k_ppp": [0., 2.5, 5.],
@@ -164,7 +162,7 @@ def test_faceted_cluster_bin_legend_appears_once():
     plt.close(fig)
 
 
-def test_thesis_largest_cluster_figure_is_categorical_bars():
+def test_thesis_largest_cluster_figure_is_categorical_bars() -> None:
     from src.plots.figures import plot_largest_cluster_metric
     df = pd.DataFrame({
         "E_att": [2., 4., 8.],
@@ -182,7 +180,7 @@ def test_thesis_largest_cluster_figure_is_categorical_bars():
     plt.close(fig)
 
 
-def test_pure_and_mixed_ranked_condition_plot_contract():
+def test_pure_and_mixed_ranked_condition_plot_contract() -> None:
     from src.plots.figures import plot_ranked_condition
     from src.plots.style import RANKS
     pure = {"E_att": [2.]}
@@ -206,7 +204,7 @@ def test_pure_and_mixed_ranked_condition_plot_contract():
 
 
 
-def test_validation_scatter_uses_shared_discrete_attraction_colors():
+def test_validation_scatter_uses_shared_discrete_attraction_colors() -> None:
     from src.plots.figures import plot_mfe_pairing_scatter, plot_precision_recall
     frame = pd.DataFrame({
         "E_att": [2., 2., 4., 4.],
@@ -227,7 +225,7 @@ def test_validation_scatter_uses_shared_discrete_attraction_colors():
     plt.close(fig)
 
 
-def test_validation_rg_reads_replicate_sd_from_exported_csv():
+def test_validation_rg_reads_replicate_sd_from_exported_csv() -> None:
     """The published validation plot needs no per-frame Rg NPZ archives."""
     from src.plots.figures import plot_rg_validation
 
@@ -256,7 +254,7 @@ def test_validation_rg_reads_replicate_sd_from_exported_csv():
     plt.close(fig)
 
 
-def test_validation_rg_has_replicate_points_and_percentile_errorbars():
+def test_validation_rg_has_replicate_points_and_percentile_errorbars() -> None:
     from src.plots.figures import plot_rg_validation
     summary = pd.DataFrame({
         "E_att": [2., 4.],
@@ -278,7 +276,7 @@ def test_validation_rg_has_replicate_points_and_percentile_errorbars():
 
 
 
-def test_ranked_length_stacks_show_molecule_counts_and_thesis_palette():
+def test_ranked_length_stacks_show_molecule_counts_and_thesis_palette() -> None:
     from src.plots.figures import plot_ranked_clusters
     from src.plots.style import RANK_COLORS, RANKS
 
@@ -307,7 +305,7 @@ def test_ranked_length_stacks_show_molecule_counts_and_thesis_palette():
     plt.close(fig)
 
 
-def test_rq1_thesis_boxplots_are_neutral_with_individual_replicates():
+def test_rq1_thesis_boxplots_are_neutral_with_individual_replicates() -> None:
     from src.plots.figures import plot_metric_points
     df = pd.DataFrame({
         "E_att": [1., 1., 2., 2., 4., 4.],
@@ -321,7 +319,7 @@ def test_rq1_thesis_boxplots_are_neutral_with_individual_replicates():
     plt.close(fig)
 
 
-def test_ranked_condition_pure_count_labels():
+def test_ranked_condition_pure_count_labels() -> None:
     from src.plots.figures import plot_ranked_condition
     frame = {"E_att": [2.]}
     for rank in RANKS:
@@ -339,7 +337,7 @@ def test_ranked_condition_pure_count_labels():
     plt.close(fig)
 
 
-def test_network_uses_last_saved_trajectory_frame(tmp_path):
+def test_network_uses_last_saved_trajectory_frame(tmp_path: Path) -> None:
     from src.plots.networks import _frame_edges
 
     archive = tmp_path / "graph.npz"
@@ -356,7 +354,7 @@ def test_network_uses_last_saved_trajectory_frame(tmp_path):
     assert edges == [(0, 2, 3)]
 
 
-def test_cluster_network_excludes_monomers():
+def test_cluster_network_excludes_monomers() -> None:
     pytest.importorskip("networkx")
     from src.plots.networks import _cluster_graph
 
@@ -366,7 +364,7 @@ def test_cluster_network_excludes_monomers():
     assert graph.number_of_edges() == 3
 
 
-def test_network_colors_match_original_html():
+def test_network_colors_match_original_html() -> None:
     from src.plots.networks import NODE_COLORS, EDGE_COLORS
 
     assert NODE_COLORS == {"cag10": "#56A9D5", "cag47": "#F05252"}
@@ -375,7 +373,7 @@ def test_network_colors_match_original_html():
     assert EDGE_COLORS["cag47_cag47"] == NODE_COLORS["cag47"]
 
 
-def test_rg_frame_intervals_use_last_twenty_percent(tmp_path):
+def test_rg_frame_intervals_use_last_twenty_percent(tmp_path: Path) -> None:
     from src.plots.data import load_rg_frames
 
     sweep = "validation_test"
@@ -400,7 +398,7 @@ def test_rg_frame_intervals_use_last_twenty_percent(tmp_path):
 
 
 
-def test_mixture_network_colors_follow_pair_species():
+def test_mixture_network_colors_follow_pair_species() -> None:
     from src.plots.networks import _contact_type
 
     assert _contact_type("cag10", "cag10") == "cag10_cag10"
@@ -414,7 +412,7 @@ def test_mixture_network_colors_follow_pair_species():
 
 
 
-def test_contact_legend_and_annotations_match_thesis():
+def test_contact_legend_and_annotations_match_thesis() -> None:
     from src.plots.figures import plot_largest_contact_composition
 
     data = pd.DataFrame({
@@ -436,7 +434,7 @@ def test_contact_legend_and_annotations_match_thesis():
     plt.close(fig)
 
 
-def test_network_component_layout_keeps_clusters_separate():
+def test_network_component_layout_keeps_clusters_separate() -> None:
     pytest.importorskip("networkx")
     from src.plots.networks import _cluster_graph, _layout_clusters
 
