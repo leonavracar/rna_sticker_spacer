@@ -1,0 +1,4 @@
+# Additional dependencies for computing pairings and projections from GSD.
+-r requirements.txt
+gsd>=3.2,<5
+freud-analysis>=3.0,<4
