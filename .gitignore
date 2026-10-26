@@ -1,4 +1,4 @@
-# Python, notebooks, test/build caches
+# Python, notebooks, and tool caches
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
@@ -8,7 +8,7 @@ __pycache__/
 .coverage
 htmlcov/
 
-# Local environments and OS files
+# Local environments and system files
 .venv/
 venv/
 conda-env/
@@ -17,15 +17,25 @@ conda-env/
 !.env.example
 .DS_Store
 
-# Generated simulation and analysis directories
+# Simulation and obsolete analysis outputs
 /bulk/output_dir/
 /bulk/job_output/
 /bulk/pipeline_logs/
 /bulk/troubleshooting/
-/analysis_results/
 /analysis/analysis_output/
 
-# Trajectories and generated analysis intermediates
+# Exclude generated sweep outputs, except explicitly curated tables/figures
+/analysis_results/*
+!/analysis_results/*/
+/analysis_results/*/*
+!/analysis_results/*/replicates.csv
+!/analysis_results/*/summary.csv
+!/analysis_results/*/figures/
+/analysis_results/*/figures/*
+!/analysis_results/*/figures/*.png
+!/analysis_results/*/figures/*.pdf
+
+# Large/generated binary data and checkpoints
 *.gsd
 *.npy
 *.npz
@@ -34,5 +44,5 @@ conda-env/
 *.db
 *.log
 
-# Explicitly tracked real-GSD test fixture
+# Small checked-in GSD regression fixture
 !/analysis/tests/fixtures/mixture/input/trajectory_0.gsd

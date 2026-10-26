@@ -71,7 +71,7 @@ The repository includes the **original parameter grids** (`parameters.txt`) and 
 | **Length and sequence patterning** | [`51a_repeat_number`](bulk/experiments/51a_repeat_number/) · [`51b_repeat_number_rand`](bulk/experiments/51b_repeat_number_rand/) | How do CAG repeat length and composition-matched scrambled controls affect clustering? |
 | **Mixed RNA populations** | [`52b_from_frame`](bulk/experiments/52b_from_frame/) | How do short CAG10 and long CAG47 chains organize in mixed systems? |
 
-Input filenames and sequence-specific scramble identifiers are preserved as used in the original runs. The full trajectory archives and generated per-sweep results are **not included in Git**; they are stored or regenerated separately. Pinning the original HOOMD/SQD source revisions is still necessary for end-to-end simulation reproduction.
+Input filenames and sequence-specific scramble identifiers are preserved as used in the original runs. Full trajectories and intermediate caches are omitted, while selected per-sweep `replicates.csv` and `summary.csv` exports are versioned in [`analysis_results/`](analysis_results/). Pinning the original HOOMD/SQD source revisions is still necessary for end-to-end simulation reproduction.
 
 ## Example applications
 
@@ -189,7 +189,7 @@ python -m pytest analysis/tests/test_integration_mixture.py -m integration -q
 
 The mixture input trajectory and its expected CSV outputs are kept together under [`analysis/tests/fixtures/mixture/`](analysis/tests/fixtures/mixture/). The integration test exercises GSD → pairing → molecular graphs → SQLite/CSV and verifies both regression outputs and numerical invariants. The tests passed on the research cluster on 26 October 2026 (35 standard tests and one integration test); they should be rerun whenever scientific algorithms or dependencies change.
 
-Reference CSVs are regression baselines, not independent proof of the physical model. The checked-in `analysis/tests/fixtures/` data support testing; full production trajectories, per-sweep `analysis_results/` tables, caches, and checkpoints are kept outside Git.
+Reference CSVs are regression baselines, not independent proof of the physical model. The checked-in `analysis/tests/fixtures/` data support testing. Selected production `replicates.csv` and `summary.csv` outputs are tracked under [`analysis_results/`](analysis_results/); full trajectories, caches, and checkpoints stay outside Git.
 
 ## Repository guide
 
@@ -201,7 +201,7 @@ Reference CSVs are regression baselines, not independent proof of the physical m
 | [`analysis/src/`](analysis/src/) | Pairing, contact graphs, clustering, statistics, plotting |
 | [`analysis/notebooks/`](analysis/notebooks/) | Curated scientific figures for validation, reentrance, length and mixtures |
 | [`analysis/tests/`](analysis/tests/) | Unit tests, pipeline regression tests and real-GSD fixture |
-| `analysis_results/` (generated, untracked) | Per-sweep CSVs, checkpoints and local figure exports |
+| [`analysis_results/`](analysis_results/) | Selected tracked sweep CSVs; local checkpoints and optional figure exports |
 | [`analysis/docs/`](analysis/docs/) | Metric specification and historical thesis-figure registry |
 | [`notebooks/`](notebooks/) | Archived notebook exports / exploratory visualizations |
 

@@ -20,7 +20,7 @@ rna_sticker_spacer/
 │   │       └── expected/      replicates.csv and summary.csv
 │   └── docs/                  Scientific metric definitions and figure registry
 ├── bulk/experiments/<sweep>/   Version-controlled parameter grids and RNA input files
-├── analysis_results/<sweep>/  Local generated results (ignored by Git)
+├── analysis_results/<sweep>/  Reviewed CSV exports tracked; caches kept local
 ├── notebooks/                 Legacy research notebooks (preserved for reference)
 └── environment.yml           Reviewed research Conda dependencies
 ```
@@ -98,7 +98,7 @@ To rebuild CSV exports directly from existing checkpoints (no GSD or NPZ reads):
 python analysis/aggregate.py --output-root ./analysis_results
 ```
 
-Add `--sweep 52b_from_frame` to target one sweep. Input GSDs remain at their original simulation location; outputs are written only under the configured results root. The old `analysis/analysis_output/` folder is **not** part of this workflow. Both generated output directories are ignored by Git.
+Add `--sweep 52b_from_frame` to target one sweep. Input GSDs remain at their original simulation location; outputs are written only under the configured results root. The obsolete `analysis/analysis_output/` folder is **not** part of this workflow and is ignored by Git. `analysis_results/` remains the canonical output tree, with reviewed CSVs tracked and caches ignored.
 
 ## Tests and numerical validation
 
@@ -123,7 +123,7 @@ The short test trajectory and its CSVs must **not** be mixed into production sci
 
 ## Notebooks, plots, and figures
 
-The four curated notebooks in `analysis/notebooks/` read locally generated `analysis_results/<sweep>/replicates.csv` and `summary.csv`; these full production tables are not version-controlled. They call functions from `analysis/src/plots/` rather than duplicating contact analysis.
+The four curated notebooks in `analysis/notebooks/` read `analysis_results/<sweep>/replicates.csv` and `summary.csv`. Selected exports are version-controlled, and can be regenerated from local outputs. They call functions from `analysis/src/plots/` rather than duplicating contact analysis.
 
 | Notebook | Scope | Main sweeps |
 | --- | --- | --- |
@@ -152,6 +152,6 @@ Only explicitly reviewed `summary.csv`, `replicates.csv` and selected `figures/*
 
 ## Scope and legacy material
 
-`bulk/` produces simulations and is unchanged by the analysis refactor. `analysis_scripts/` and the root `notebooks/` contain earlier research implementations; they are deliberately preserved and **are not** the maintained pipeline. The old `analysis/analysis_output/` is likewise left untouched.
+`bulk/` produces simulations and is unchanged by the analysis refactor. The removed `analysis_scripts/` implementations remain available in Git history; the root `notebooks/` retains earlier exported material. The obsolete `analysis/analysis_output/` is not a maintained output location.
 
 Scientific methods and design history are retained in Git history; the maintained documentation is this guide plus the two [scientific reference documents](docs/metrics.md).
