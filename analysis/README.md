@@ -15,9 +15,10 @@ rna_sticker_spacer/
 │   │   └── plots/             Matplotlib, projections, optional PyVis
 │   ├── notebooks/             Four curated research notebooks
 │   ├── tests/                 Synthetic tests and opt-in real-GSD integration
+│   │   └── fixtures/mixture/
+│   │       ├── input/         params.json and trajectory_0.gsd
+│   │       └── expected/      replicates.csv and summary.csv
 │   └── docs/                  Scientific metric definitions and figure registry
-├── examples/mixture/eatt2/    Small real-GSD integration-test input
-├── example_results/mixture/   Recorded regression CSVs for that input
 ├── analysis_results/<sweep>/  Per-sweep outputs (reviewed CSVs may be tracked)
 ├── analysis_scripts/          Historical analysis code (preserved for reference)
 ├── notebooks/                 Legacy research notebooks (preserved for reference)
@@ -116,7 +117,7 @@ The **opt-in integration test** processes the checked-in small mixture trajector
 python -m pytest analysis/tests/test_integration_mixture.py -m integration -q
 ```
 
-Install `analysis/requirements-trajectory.txt` first. The test builds the expected sweep/run directory structure under pytest's temporary directory, reruns GSD → pairing → molecule graphs → analysis, and checks saved CSVs, molecule composition, contact conservation and independently reconstructed late-window contact/edge averages. The baseline in `example_results/mixture/` was **generated previously by the analysis code**: it detects regressions, but is not independent proof of all scientific assumptions.
+Install `analysis/requirements-trajectory.txt` first. The test builds the expected sweep/run directory structure under pytest's temporary directory, reruns GSD → pairing → molecule graphs → analysis, and checks saved CSVs, molecule composition, contact conservation and independently reconstructed late-window contact/edge averages. The baseline in `analysis/tests/fixtures/mixture/expected/` was **generated previously by the analysis code**: it detects regressions, but is not independent proof of all scientific assumptions.
 
 The short test trajectory and its CSVs must **not** be mixed into production scientific summaries. Both suites passed on the research cluster on 2026-10-26 (35 default tests and one GSD integration test); rerun them after changes to numerical behavior or dependencies.
 

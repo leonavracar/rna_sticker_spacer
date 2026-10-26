@@ -2,7 +2,7 @@
 
 Run separately with: python -m pytest -m integration -q
 
-The CSVs under example_results/ are a recorded baseline generated from
+The CSVs under analysis/tests/fixtures/mixture/expected/ are a recorded baseline generated from
 the research pipeline, *not* an independently validated scientific truth.
 Additional physical/conservation assertions guard against tautological checks.
 """
@@ -24,8 +24,8 @@ from src.utils.io import load_params_json
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXAMPLE = ROOT / "examples" / "mixture" / "eatt2"
-REFERENCE = ROOT / "example_results" / "mixture"
+EXAMPLE = ROOT / "analysis" / "tests" / "fixtures" / "mixture" / "input"
+REFERENCE = ROOT / "analysis" / "tests" / "fixtures" / "mixture" / "expected"
 
 
 def _compare_csv_tables(actual: Path, reference: Path) -> pd.DataFrame:

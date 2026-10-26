@@ -50,4 +50,4 @@ analysis_scripts/helper_scripts/nohup.out
 !/analysis_results/*/figures/*.pdf
 
 # Curated self-contained demo trajectory (explicitly reviewed).
-!/examples/mixture/eatt2/trajectory_0.gsd
+!/analysis/tests/fixtures/mixture/input/trajectory_0.gsd
