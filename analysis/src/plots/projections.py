@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,8 +12,10 @@ from numpy.typing import NDArray
 from scipy.ndimage import gaussian_filter
 
 from ..utils.io import load_params_json
-
 from .style import PlotStyle
+
+if TYPE_CHECKING:
+    import gsd.hoomd
 
 
 def repeat_count(molecule_file: str) -> int:
@@ -30,7 +32,7 @@ def repeat_count(molecule_file: str) -> int:
     return int(count)
 
 
-def projection_xy(frame: Any, bins: int = 200, sigma: float = 0.0) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+def projection_xy(frame: gsd.hoomd.Frame, bins: int = 200, sigma: float = 0.0) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Return final-frame XY particle-count histogram and its physical box edges."""
     if bins < 2 or sigma < 0:
         raise ValueError("bins must be >= 2 and sigma must be nonnegative")
@@ -70,7 +72,7 @@ def plot_projection_sweep(
     sigma: float = 0.0,
     gamma: float = 0.55,
     title: str | None = None,
-):
+) -> tuple[plt.Figure, np.ndarray]:
     """Plot a grid of representative final GSD frames.
 
     For RQ1: row_by='angle_k_ppp' and columns E_att.
