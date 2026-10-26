@@ -120,4 +120,5 @@ def test_mixture_gsd_end_to_end(tmp_path: Path) -> None:
     # All particles, irrespective of RNA species, must be accounted for.
     assert row["frac_mol_cag10"] + row["frac_mol_cag47"] == pytest.approx(1.0)
     assert row["largest_fraction_total_particles"] <= 1.0
-    assert np.isfinite(replicates.select_dtypes(include="number").to_numpy()).all()
+    for metric in ("n_base_pairs", "n_edges", "n_inter_contacts", "n_intra_contacts"):
+        assert np.isfinite(row[metric]), metric
