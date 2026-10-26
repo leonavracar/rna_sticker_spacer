@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sized
 from contextlib import contextmanager
 import json
 from pathlib import Path
@@ -81,8 +82,9 @@ def load_npz(cache_path: Path) -> dict[str, NDArray]:
     """Read all arrays from an NPZ archive."""
     with np.load(cache_path) as data:
         return {key: data[key] for key in data.files}
-    
-def get_frames(traj, fraction_last: float = 1.0) -> list[int]:
+
+
+def get_frames(traj: Sized, fraction_last: float = 1.0) -> list[int]:
     """Return indices of the last `fraction_last` of frames (0<f<=1)."""
     if not 0 < fraction_last <= 1:
         raise ValueError("fraction_last must lie in (0, 1]")
