@@ -2,13 +2,9 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import networkx as nx
-
-if TYPE_CHECKING:
-    from pyvis.network import Network
 
 NODE_COLORS = {"cag10": "#56A9D5", "cag47": "#F05252"}
 EDGE_COLORS = {
@@ -55,8 +51,6 @@ def _cluster_graph(edges: list[tuple[int, int, int]]) -> nx.Graph:
 
 def _layout_clusters(graph: nx.Graph) -> dict[int, np.ndarray]:
     """Place disconnected molecular clusters without overlapping them."""
-    import networkx as nx
-
     components = sorted(nx.connected_components(graph), key=len, reverse=True)
     widths = [max(90.0, 38.0 * np.sqrt(len(component))) for component in components]
     row_limit = max(max(widths), np.sqrt(sum(width * width for width in widths)))
