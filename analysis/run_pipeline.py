@@ -5,15 +5,11 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
-import sys
-from typing import Any, Iterator, Literal
+from typing import Any, Iterator, Literal, TypeAlias
 
 import numpy as np
 import pandas as pd
 import yaml
-
-ANALYSIS_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(ANALYSIS_DIR))
 
 from src.concentration import concentrations_from_density
 from src.results import export_sweep, metrics_from_analysis, save_checkpoint
@@ -33,6 +29,10 @@ from src.molecule_graph import (
 from src.energy import energy_framewise
 from src.single_chain import mfe_pairs_from_csv, single_chain_framewise
 from src.utils.io import load_params_json
+
+
+ANALYSIS_DIR = Path(__file__).resolve().parent
+ArchiveKind: TypeAlias = Literal["pairing", "lookup", "graph", "intramol"]
 
 
 @dataclass(frozen=True)
@@ -61,7 +61,7 @@ class AnalysisResult:
 
 def archive_path(
     run_dir: Path,
-    kind: Literal["pairing", "lookup", "graph", "intramol"],
+    kind: ArchiveKind,
     stem: str,
 ) -> Path:
     """Resolve the established NPZ and molecule-lookup filenames."""
@@ -77,7 +77,7 @@ def archive_path(
     raise ValueError(f"Unknown archive type: {kind}")
 
 
-def find_archive(paths: TrajectoryPaths, kind: str) -> Path | None:
+def find_archive(paths: TrajectoryPaths, kind: ArchiveKind) -> Path | None:
     """Locate a cached archive without mixing incompatible pairing generations."""
     output = archive_path(paths.output_run, kind, paths.stem)
     if output.is_file():
