@@ -1,5 +1,9 @@
 # plot_utils.py
 from __future__ import annotations
+
+from collections.abc import Iterable
+from typing import Any, Literal
+
 import numpy as np
 import freud
 import gsd.hoomd
@@ -7,15 +11,14 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.colors import PowerNorm
 from scipy.ndimage import gaussian_filter
-from typing import Iterable
-Axis = str  # "x" | "y" | "z"
+Axis = Literal["x", "y", "z"]
 _AX = {"x": 0, "y": 1, "z": 2}
 
 
 # ---------- COMPUTE ----------
 
 def compute_projection_2d(
-    traj_or_frame,
+    traj_or_frame: gsd.hoomd.Frame | gsd.hoomd.HOOMDTrajectory,
     plane: str = "xy",
     bins: int = 200,
     sigma: float = 0.0,
@@ -186,7 +189,10 @@ def plot_profile_1d(
     return ax
 
 
-def plot_rdf(r, g, ax=None, label=None, color=None, annotate=True):
+def plot_rdf(
+    r: np.ndarray, g: np.ndarray, ax: Axes | None = None,
+    label: str | None = None, color: str | None = None, annotate: bool = True,
+) -> Axes:
     if ax is None:
         _, ax = plt.subplots(figsize=(6, 4))
     ax.plot(r, g, label=label, color=color)
