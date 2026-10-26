@@ -10,7 +10,6 @@ Additional physical/conservation assertions guard against tautological checks.
 from __future__ import annotations
 
 import importlib.util
-import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -20,6 +19,8 @@ import numpy as np
 import pandas as pd
 import pytest
 from pandas.testing import assert_frame_equal
+
+from src.utils.io import load_params_json
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -57,7 +58,7 @@ def _compare_csv_tables(actual: Path, reference: Path) -> pd.DataFrame:
 
 def test_checked_in_mixture_reference_matches_input_composition() -> None:
     """The numerical reference must describe the actual packaged molecules."""
-    parameters = json.loads((EXAMPLE / "params.json").read_text(encoding="utf-8"))
+    parameters = load_params_json(EXAMPLE / "params.json")
     lengths = [len(sequence) for sequence in parameters["sequences"]]
     assert lengths.count(30) == 235
     assert lengths.count(141) == 50
