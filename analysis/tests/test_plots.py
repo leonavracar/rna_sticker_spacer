@@ -245,11 +245,14 @@ def test_validation_rg_reads_replicate_sd_from_exported_csv():
         summary, ax, replicates=replicates, style=STYLE,
         x_order=(2., 4.), reference_nm=None, interval="std",
     )
-    segments = [coll.get_segments() for coll in ax.collections
-                if hasattr(coll, "get_segments")]
-    assert len(segments) == 2
-    assert np.allclose(segments[0][0][:, 1], [1.2, 1.4])
-    assert np.allclose(segments[1][0][:, 1], [1.5, 1.9])
+    segments = [seg for coll in ax.collections
+                if hasattr(coll, "get_segments")
+                for seg in coll.get_segments()]
+    vertical_bars = [seg for seg in segments
+                     if np.isclose(seg[0, 0], seg[1, 0])]
+    assert len(vertical_bars) == 2
+    assert np.allclose(vertical_bars[0][:, 1], [1.2, 1.4])
+    assert np.allclose(vertical_bars[1][:, 1], [1.5, 1.9])
     plt.close(fig)
 
 
