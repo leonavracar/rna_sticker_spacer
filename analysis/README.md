@@ -10,9 +10,10 @@ sweep**. Original simulation input is never modified.
 
 ## Environment and automated tests
 
-Use **Python 3.11** for the analysis environment (GitHub Actions also checks
-3.12). Install the CPU analysis and testing dependencies from the repository
-root:
+GitHub Actions tests the lightweight CPU analysis environment on **Python 3.11**.
+The full HPC Conda environment is documented separately in
+[ENVIRONMENT.md](ENVIRONMENT.md). Install the CPU testing dependencies from
+the repository root:
 
 ~~~bash
 python -m pip install -r analysis/requirements-test.txt
