@@ -1,215 +1,156 @@
 # RNA simulation analysis
 
-Reproducible analysis of coarse-grained RNA simulations for single-chain
-validation, RQ1 (reentrance), RQ2 (length, with scrambled controls), and RQ3 (mixtures).
+This directory contains the maintained analysis pipeline, reusable plotting code, curated research notebooks, and tests for the coarse-grained RNA sticker–spacer simulations in `bulk/`. **This is the working guide**; scientific definitions and the historical thesis-figure inventory live in [docs/metrics.md](docs/metrics.md) and [docs/figures.md](docs/figures.md).
 
-The pipeline runs GSD -> accepted pairing NPZ -> molecular graph NPZ ->
-framewise measurements -> **replicate-level 10% means**. It checkpoints each
-completed replicate in the input sweep's output folder, then exports **two plotting-ready CSVs per
-sweep**. Original simulation input is never modified.
+## Repository layout and responsibilities
 
-## Environment and automated tests
+```text
+rna_sticker_spacer/
+├── bulk/                      HOOMD-blue simulation source (GPU; custom SQD plugin)
+├── analysis/
+│   ├── run_pipeline.py        GSD → pairing → graph → measurements → exports
+│   ├── aggregate.py           Re-export existing SQLite checkpoints
+│   ├── configs/               Analysis profiles and numerical settings
+│   ├── src/                   Reusable calculations and plotting functions
+│   │   └── plots/             Matplotlib, projections, optional PyVis
+│   ├── notebooks/             Four curated research notebooks
+│   ├── tests/                 Synthetic tests and opt-in real-GSD integration
+│   └── docs/                  Scientific metric definitions and figure registry
+├── examples/mixture/eatt2/    Small real-GSD integration-test input
+├── example_results/mixture/   Recorded regression CSVs for that input
+├── analysis_results/<sweep>/  Per-sweep outputs (reviewed CSVs may be tracked)
+├── analysis_scripts/          Historical analysis code (preserved for reference)
+├── notebooks/                 Legacy research notebooks (preserved for reference)
+└── environment.yml           Reviewed research Conda dependencies
+```
 
-GitHub Actions tests the lightweight CPU analysis environment on **Python 3.11**.
-The full HPC Conda environment is documented separately in
-[ENVIRONMENT.md](ENVIRONMENT.md). Install the CPU testing dependencies from
-the repository root:
+The pipeline is responsible for **measurements and aggregation**; the curated notebooks select conditions, visualize results, and interpret them. The original simulation and legacy research code are left intact. There is **no second `data/processed/` tree**.
 
-~~~bash
+## Environment
+
+The checked-in root [`environment.yml`](../environment.yml) describes the research Conda dependencies and CUDA/build prerequisites. **HOOMD-blue and the custom SQD plugin must each be built from source** and are *not* installed by that YAML. Exact source versions, compiler/CUDA options, and build commands will be documented when the simulation setup is finalized; do not assume that creating the Conda environment alone enables GPU simulations.
+
+For analysis and plots only, from the repository root:
+
+```bash
+python -m pip install -r analysis/requirements.txt
+```
+
+To reconstruct accepted pairs from GSD, compute geometry from trajectories, or run the real-GSD integration test, also install the trajectory dependencies:
+
+```bash
+python -m pip install -r analysis/requirements-trajectory.txt
+```
+
+These CPU requirements do not require HOOMD-blue. They are compatible-range specifications, **not exact locks** for the cluster environment. The lightweight GitHub Actions tests run on Python 3.11; the research environment currently uses Python 3.13. Install JupyterLab in the analysis environment when you want to run notebooks.
+
+## Pipeline: from trajectories to CSVs
+
+From the repository root, replace the example sweep path with the location of your actual simulation outputs:
+
+```bash
+python analysis/run_pipeline.py \
+  --sweep /path/to/validation/bulk/output_dir/52b_from_frame \
+  --output-root ./analysis_results \
+  --experiment mixture \
+  --stage all --overwrite-npz
+```
+
+The `--sweep` directory contains parameter-run subdirectories, each with `params.json` and `trajectory_*.gsd`. The **four profiles** are `single_chain`, `reentrance`, `length_patterning`, and `mixture`; corresponding settings live in `analysis/configs/`.
+
+| Stage | Input | Output |
+| --- | --- | --- |
+| `pairing` | GSD | Filtered complementary particle pairs, molecule lookup, frame indices/steps and optional single-chain Rg |
+| `graphs` | Pairing NPZ | Weighted molecule–molecule edges and mixture intramolecular contacts |
+| `analyze` | Saved NPZs + `params.json` | Per-replicate measurements, SQLite checkpoints, compiled CSVs; **no GSD read** |
+| `all` | GSD | Pairing, graphs, analysis and CSV exports |
+| `energy` | GSD logs | Optional energy/kinetic measurements in the checkpoints |
+
+Use `--stage analyze` when the NPZ intermediates already exist. Use `--overwrite-npz` with `--stage all` to recompute instead of reusing archived intermediates. `--save-framewise` opts into per-trajectory diagnostics; they are not written by default. `--run-ids 0` selects matching parameter-run folders, including their trajectory replicates.
+
+Single-chain validation uses a ViennaRNA reference CSV (`--viennarna-reference PATH` can override the configured path). Its Rg values are calculated from unwrapped particle coordinates during the GSD pairing pass, in nm, and reused by NPZ-only analysis. The other profiles do not compute Rg by default.
+
+Every current profile averages the **final 10% of sampled frames** within each replicate. That is the implemented pipeline convention; it differs from the late windows used in some original thesis figures. See the figure registry for that distinction.
+
+### Outputs and statistical units
+
+```text
+analysis_results/
+  52b_from_frame/
+    replicates.csv               one wide row per trajectory
+    summary.csv                  one wide row per experimental condition
+    analysis.sqlite              resumable replicate checkpoints (not tracked)
+    <parameter-run>/
+      computed_metrics/          pairing / graph NPZs (not tracked)
+    figures/                     optional notebook PNG exports
+```
+
+`replicates.csv` contains each trajectory's experimental metadata (`E_att`, `angle_k_ppp`, `density`, composition, replicate ID, window parameters) and scalar measurements such as `n_base_pairs`, `n_edges`, `mean_degree`, cluster-size-bin fractions and mixture-specific contact and ranked-cluster fields.
+
+`summary.csv` groups replicates by condition and exposes per-metric `_mean`, `_std`, `_p10`, and `_p90` columns. `n` counts independent statistical units; `n_trajectories` counts sampled trajectories. For scrambled-sequence controls, trajectories of the **same scramble sequence** are averaged first, then independent scrambles contribute equally.
+
+Cluster-size percentages and ranked material fractions are **particle-weighted relative to all simulated nucleotides**, not just molecules in a cluster. The denominator for largest-cluster *contact-type composition* is instead the number of intermolecular contacts inside that cluster. Consult [metric definitions](docs/metrics.md) before changing these calculations.
+
+To rebuild CSV exports directly from existing checkpoints (no GSD or NPZ reads):
+
+```bash
+python analysis/aggregate.py --output-root ./analysis_results
+```
+
+Add `--sweep 52b_from_frame` to target one sweep. Input GSDs remain at their original simulation location; outputs are written only under the configured results root. The old `analysis/analysis_output/` folder is **not** part of this workflow and is intentionally left untouched.
+
+## Tests and numerical validation
+
+From the repository root:
+
+```bash
 python -m pip install -r analysis/requirements-test.txt
 python -m pytest analysis/tests -q
-~~~
+```
 
-The optional `analysis/requirements-trajectory.txt` adds GSD and freud for
-recomputing particle pairs or creating GSD projections. This does **not**
-install HOOMD-blue or the custom simulation plugin. Details and commands for
-notebooks are in [ENVIRONMENT.md](ENVIRONMENT.md).
+This is the fast synthetic unit/regression suite. It tests contact and cluster bookkeeping, CSV/SQLite exports, independent scrambled units and plot contracts, without GPU/HOOMD or real GSD data. The GitHub Actions workflow runs this CPU suite.
 
-The [GitHub Actions workflow](../.github/workflows/analysis-tests.yml) runs
-**these existing tests** automatically on pushes and pull requests. No
-production trajectories, GPU or HPC services are required. The tests cover
-scientific calculations, checkpoint exports, the four analysis profiles and
-plotting functions.
+The **opt-in integration test** processes the checked-in small mixture trajectory and compares all exported columns against recorded reference CSVs:
 
-## Run
+```bash
+python -m pytest analysis/tests/test_integration_mixture.py -m integration -q
+```
 
-From the repository root, for example:
+Install `analysis/requirements-trajectory.txt` first. The test builds the expected sweep/run directory structure under pytest's temporary directory, reruns GSD → pairing → molecule graphs → analysis, and checks saved CSVs, molecule composition, contact conservation and independently reconstructed late-window contact/edge averages. The baseline in `example_results/mixture/` was **generated previously by the analysis code**: it detects regressions, but is not independent proof of all scientific assumptions.
 
-~~~bash
-python analysis/run_pipeline.py \
-  --sweep ../validation/bulk/output_dir/52b_from_frame \
-  --output-root ./analysis_results \
-  --experiment mixture \
-  --stage all \
-  --overwrite-npz
-~~~
+The short test trajectory and its CSVs must **not** be mixed into production scientific summaries. Both suites passed on the research cluster on 2026-10-26 (35 default tests and one GSD integration test); rerun them after changes to numerical behavior or dependencies.
 
-To reanalyze existing NPZs **without opening GSDs**:
+## Notebooks, plots, and figures
 
-~~~bash
-python analysis/run_pipeline.py \
-  --sweep ../validation/bulk/output_dir/52b_from_frame \
-  --output-root ./analysis_results \
-  --experiment mixture \
-  --stage analyze
-~~~
+The four curated notebooks in `analysis/notebooks/` use `analysis_results/<sweep>/replicates.csv` and `summary.csv`. They call functions from `analysis/src/plots/` rather than duplicating contact analysis.
 
-The available profiles are `single_chain`, `reentrance`,
-`length_patterning`, and `mixture`. All profiles use the **final 10%
-of sampled frames**. Use `--run-ids 0` to select parameter-run folder
-`0_*`; all `trajectory_*.gsd` replicates within it are included.
-
-| Stage | Reads | Produces |
+| Notebook | Scope | Main sweeps |
 | --- | --- | --- |
-| `pairing` | GSD | Accepted-pair NPZ, molecule lookup, exact GSD steps; **single-chain Rg in nm** |
-| `graphs` | NPZ | Weighted molecular graph NPZ, plus intramolecular NPZ for mixtures |
-| `analyze` | NPZ + `params.json` | SQLite checkpoint and compiled CSVs; **no GSD reads** |
-| `all` | GSD, then NPZ | Pairing, graphs, analysis; excludes optional energy |
-| `energy` | GSD | Optional logged energies and KE per particle, summarized in SQLite |
+| [01_validation.ipynb](notebooks/01_validation.ipynb) | Single-chain MFE matches, precision/recall, Rg | `53c_single_mol_duplex` |
+| [02_reentrance.ipynb](notebooks/02_reentrance.ipynb) | RQ1: reentrant clustering and stiffness | `50b_reentrant_full` |
+| [03_length.ipynb](notebooks/03_length.ipynb) | RQ2: repeat lengths and scrambled controls | `51a_repeat_number`, `51b_repeat_number_rand` |
+| [04_mixtures.ipynb](notebooks/04_mixtures.ipynb) | RQ3: mixed CAG10/CAG47, pure references | `52b_from_frame`, `51a_repeat_number` |
 
-Use `--overwrite-npz` with `--stage all` for a genuinely fresh run even when the input sweep already contains cached NPZs. It only overwrites NPZs beneath the new output root; original input archives are unchanged.
-Pairing/contact-graph scientific calculations are unchanged by aggregation.
-`--save-framewise` optionally saves diagnostic time series per trajectory
-under the mirrored run directory, but is off by default.
+Start Jupyter from the repository root so the notebooks locate project modules and paths:
 
-Single-chain analysis requires a matching ViennaRNA reference CSV. Specify
-`--viennarna-reference path/to/reference.csv` to override the configured
-reference path; relative paths are resolved against the input sweep.
-For **single-chain validation only**, Rg is calculated automatically in nm
-from unwrapped particle coordinates while the `pairing` stage is already reading
-GSD frames. The values are cached as `Rg_nm` in the pairing NPZ and averaged
-over the same final 10% in `analyze`, so `--stage analyze` never reopens GSD.
-Other research questions do not calculate Rg.
+```bash
+jupyter lab analysis/notebooks/
+```
 
-## Output
+The notebooks default to the repository's `analysis_results/` directory. Set `RNA_ANALYSIS_RESULTS_ROOT` to point them at an existing HPC result tree; **do not copy results into another processing folder**. `SAVE_FIGURES = True` writes selected PNGs under `analysis_results/<sweep>/figures/`; switch it off if you only want interactive plots.
 
-~~~text
-analysis_results/
-├── 52b_from_frame/               # automatically named after --sweep
-│   ├── analysis.sqlite           # replicate checkpoints for this sweep
-│   ├── replicates.csv
-│   ├── summary.csv
-│   └── <parameter-run>/
-│       └── computed_metrics/...  # pairing and graph NPZs
-├── 51a_repeat_number/
-│   ├── analysis.sqlite
-│   ├── replicates.csv
-│   └── summary.csv
-└── 51b_repeat_number_rand/
-    ├── analysis.sqlite
-    ├── replicates.csv
-    └── summary.csv
-~~~
+Optional RQ1/RQ2 **final-frame XY projections** read the original GSD files (enable `SHOW_PROJECTIONS`). The mixture notebook can export optional **PyVis networks** from graph NPZs (enable `EXPORT_PYVIS`). Neither feature is required to draw the ordinary summary plots. Historic/advanced XY/XZ/YZ, RDF and 1D diagnostic functions remain in `src/plots/diagnostic.py` and `notebooks/diagnostic_plots.ipynb`.
 
-**`replicates.csv`** is **wide**: **one row per trajectory**, one column
-per scalar scientific measurement, with parameters and input provenance at the
-front. It includes `folder_name`, `traj_replicate`, `molecule_file`, E_att,
-stiffness, density, particle/molecule counts, molar concentrations, and the
-analysis window. `sequence_class`, `repeat_count`, and `scramble_id` appear
-only where meaningful; the sweep name is already part of the directory path.
+Reusable plot interfaces:
+- `src/plots/style.py`: labels, palettes and `PlotStyle`;
+- `src/plots/data.py`: CSV loading, condition filtering, `melt_metrics`, independent units;
+- `src/plots/figures.py`, `panels.py`: axes-first plots and multi-panel layouts;
+- `src/plots/projections.py`, `networks.py`: optional trajectory projections and contact-network HTMLs.
 
-For example, use `n_base_pairs`, `n_edges`, and `mean_degree` directly.
-Cluster-bin measurements use names such as
-`cluster_bin_molecule_count_monomer` and
-`cluster_bin_particle_percentage_ge_50pct`.
-Mixture outputs include `rank_largest_cag10_n_molecules`,
-`rank_largest_cag47_fraction_total_particles`,
-`largest_contacts_cag10_cag47_fraction_inter_contacts`, and
-`largest_mean_degree`. A ranked particle fraction is a fraction of **all
-particles in the simulation**, not a fraction of just the ranked cluster.
+Only explicitly reviewed `summary.csv`, `replicates.csv` and selected `figures/*.png` or `*.pdf` are eligible for Git tracking under `analysis_results/`. Do not commit large trajectories, caches, NPZs, databases, or every generated figure. For a detailed map of thesis figure inputs and changes in late-window definitions, see [docs/figures.md](docs/figures.md).
 
-**`summary.csv`** is also **wide**: **one row per condition**, grouped by RNA
-composition/length, attraction, stiffness, density, and analysis parameters.
-Each metric has `_mean`, `_std`, `_p10`, and `_p90` columns; for example
-`n_edges_mean` and `n_edges_std`. `n` counts statistically independent
-units and `n_trajectories` counts raw trajectories. For scrambled controls,
-trajectories of each *distinct scramble sequence* are averaged first, then
-all scrambles contribute equally. The identity of every scramble is kept in
-`replicates.csv`, but does not split the summary into separate conditions.
+## Scope and legacy material
 
-The pipeline avoids redundant extra columns such as
-`inter_particle_contacts_total` (already `n_inter_contacts`) and
-`mol_contacts_total` (already `n_edges`).
+`bulk/` produces simulations and is unchanged by the analysis refactor. `analysis_scripts/` and the root `notebooks/` contain earlier research implementations; they are deliberately preserved and **are not** the maintained pipeline. The old `analysis/analysis_output/` is likewise left untouched.
 
-**All RQs use the same 10% window**, including pure-system references
-plotted beside mixtures. No old CSVs are read. Legacy per-run CSVs created
-by earlier runner versions may remain on disk, but this version neither
-creates nor uses them.
-
-If the run is interrupted, previously committed replicates remain in SQLite.
-To regenerate all sweep tables from their checkpoint databases (without GSD or
-NPZ reads), run:
-
-~~~bash
-python analysis/aggregate.py --output-root ./analysis_results
-~~~
-
-Or export just one input sweep by adding `--sweep 52b_from_frame`.
-The output names are **never based on the research question**; they always
-match the input sweep folder. Different sweeps stay independent, including
-the periodic and scrambled RQ2 runs, which the notebook can compare.
-
-## Validation
-
-From the repository root, run the lightweight regression tests:
-
-~~~bash
-python -m pytest analysis/tests -q
-~~~
-
-The tests cover the wide replicate and condition exports, correct weighting of
-independent scramble sequences, cluster-bin conservation, MFE matching, and
-species-resolved contacts in mixtures. The four profile smoke tests operate
-entirely on synthetic pairing/graph NPZ data and deliberately have no GSD
-trajectory file, verifying that normal analysis never opens GSD.
-
-For real data, validate `replicates.csv` and `summary.csv` for a single
-parameter run before processing the full sweep. Compare selected scalar,
-ranked-cluster, and largest-cluster contact metrics against previously
-verified values using the **same final 10% frame window**.
-
-## Plotting notebooks
-
-The curated research notebooks are in [notebooks/](notebooks/README.md):
-
-- [Single-chain validation](notebooks/01_validation.ipynb)
-- [RQ1 — Reentrant clustering](notebooks/02_reentrance.ipynb)
-- [RQ2 — RNA length](notebooks/03_length.ipynb)
-- [RQ3 — CAG10/CAG47 mixtures](notebooks/04_mixtures.ipynb)
-
-The notebooks load the **wide CSVs** above, use centralized `PlotStyle`
-settings and `functools.partial` for reusable axes-first plot functions.
-Framewise-only plots are implemented separately and not run in the notebooks.
-The RQ1/RQ2 XY projections can optionally read **final GSD frames**;
-an optional PyVis network can be exported from an NPZ without GSD.
-See the [plotting guide](notebooks/README.md) for details.
-
-## Figure mapping
-
-The notebooks do plotting and hypothesis tests; the pipeline produces the
-measurements and descriptive summaries:
-
-- **Validation (Figures 6–8):** MFE matches, extra pairs, precision, recall,
-  and automatically cached single-chain Rg.
-- **RQ1 (Figures 9–12):** `cluster_bins_molecule_count`, base-pair
-  intra/inter counts, edge counts/weights, mean molecule recurrence.
-- **RQ2 (Figures 13–15):** `cluster_bins_particle_percentage`,
-  `ranked_clusters`, mean particle recurrence, edge weights; replicate
-  data support permutation tests in the notebook.
-- **RQ3 (Figures 16–18):** `ranked_clusters` by species,
-  `cluster_contacts` by contact type and `largest_cluster` size,
-  molecular graph degree and edge counts. The pure reference panels of
-  Figure 16 come from RQ2.
-
-No monomer/oligomer/droplet *threshold classification* is computed.
-Monomers remain a legitimate cluster-size bin and ranked material class.
-The original thesis's 2D density projections require an explicit optional
-GSD visualization step and are not recreated by the compiled tables.
-
-## Output management and smoke fixture
-
-See [FIGURES.md](FIGURES.md) for saving notebook figures and selectively
-publishing results from the existing per-sweep directories. The full
-GSD-to-summary demonstration is described in
-[tests/README.md](tests/README.md). That optional integration smoke test is
-separate from the synthetic CPU regression tests and is not yet automated.
+Scientific methods and design history are retained in Git history; the maintained documentation is this guide plus the two [scientific reference documents](docs/metrics.md).
