@@ -1,11 +1,17 @@
 """Plot XY density projections from GSD trajectories."""
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import PowerNorm
+from numpy.typing import NDArray
+from scipy.ndimage import gaussian_filter
+
+from ..utils.io import load_params_json
 
 from .style import PlotStyle
 
@@ -24,9 +30,8 @@ def repeat_count(molecule_file: str) -> int:
     return int(count)
 
 
-def projection_xy(frame, bins: int = 200, sigma: float = 0.0):
+def projection_xy(frame: Any, bins: int = 200, sigma: float = 0.0) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Return final-frame XY particle-count histogram and its physical box edges."""
-    from scipy.ndimage import gaussian_filter
     if bins < 2 or sigma < 0:
         raise ValueError("bins must be >= 2 and sigma must be nonnegative")
     lengths = np.asarray(frame.configuration.box[:2], dtype=float)
@@ -40,8 +45,7 @@ def projection_xy(frame, bins: int = 200, sigma: float = 0.0):
     return hist, xa, ya
 
 
-def _run_metadata(sweep_dir: Path, *, row_by: str, density: float | None):
-    from ..utils.io import load_params_json
+def _run_metadata(sweep_dir: Path, *, row_by: str, density: float | None) -> Iterator[tuple[Any, float, Path]]:
     for run_dir in sorted(sweep_dir.iterdir()):
         if not run_dir.is_dir() or not (run_dir / "params.json").is_file():
             continue
