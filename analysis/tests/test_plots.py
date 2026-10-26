@@ -227,6 +227,32 @@ def test_validation_scatter_uses_shared_discrete_attraction_colors():
     plt.close(fig)
 
 
+def test_validation_rg_reads_replicate_sd_from_exported_csv():
+    """The published validation plot needs no per-frame Rg NPZ archives."""
+    from src.plots.figures import plot_rg_validation
+
+    summary = pd.DataFrame({
+        "E_att": [2., 4.],
+        "Rg_nm_mean": [1.3, 1.7],
+        "Rg_nm_std": [.1, .2],
+    })
+    replicates = pd.DataFrame({
+        "E_att": [2., 2., 4., 4.],
+        "Rg_nm": [1.2, 1.4, 1.5, 1.9],
+    })
+    fig, ax = plt.subplots()
+    plot_rg_validation(
+        summary, ax, replicates=replicates, style=STYLE,
+        x_order=(2., 4.), reference_nm=None, interval="std",
+    )
+    segments = [coll.get_segments() for coll in ax.collections
+                if hasattr(coll, "get_segments")]
+    assert len(segments) == 2
+    assert np.allclose(segments[0][0][:, 1], [1.2, 1.4])
+    assert np.allclose(segments[1][0][:, 1], [1.5, 1.9])
+    plt.close(fig)
+
+
 def test_validation_rg_has_replicate_points_and_percentile_errorbars():
     from src.plots.figures import plot_rg_validation
     summary = pd.DataFrame({
