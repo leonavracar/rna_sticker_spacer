@@ -8,6 +8,28 @@ framewise measurements -> **replicate-level 10% means**. It checkpoints each
 completed replicate in the input sweep's output folder, then exports **two plotting-ready CSVs per
 sweep**. Original simulation input is never modified.
 
+## Environment and automated tests
+
+Use **Python 3.11** for the analysis environment (GitHub Actions also checks
+3.12). Install the CPU analysis and testing dependencies from the repository
+root:
+
+~~~bash
+python -m pip install -r analysis/requirements-test.txt
+python -m pytest analysis/tests -q
+~~~
+
+The optional `analysis/requirements-trajectory.txt` adds GSD and freud for
+recomputing particle pairs or creating GSD projections. This does **not**
+install HOOMD-blue or the custom simulation plugin. Details and commands for
+notebooks are in [ENVIRONMENT.md](ENVIRONMENT.md).
+
+The [GitHub Actions workflow](../.github/workflows/analysis-tests.yml) runs
+**these existing tests** automatically on pushes and pull requests. No
+production trajectories, GPU or HPC services are required. The tests cover
+scientific calculations, checkpoint exports, the four analysis profiles and
+plotting functions.
+
 ## Run
 
 From the repository root, for example:
