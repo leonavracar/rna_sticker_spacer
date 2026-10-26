@@ -15,7 +15,7 @@ from .data import require_columns
 from .style import BIN_COLORS, MOLECULE_BINS, PARTICLE_BINS, RANKS, PlotStyle
 
 
-def _x_positions(df: pd.DataFrame, x: str) -> tuple[list[float], np.ndarray]:
+def _x_positions(df: pd.DataFrame, x: str) -> tuple[list[float | str], np.ndarray]:
     values = sorted(df[x].dropna().unique())
     return values, np.arange(len(values), dtype=float)
 
@@ -629,7 +629,7 @@ def plot_rg_validation(
 
 def make_figure(nrows: int = 1, ncols: int = 1, *,
                 style: PlotStyle, width: float = 4.7, height: float = 3.6,
-                sharex: bool = False, sharey: bool = False):
+                sharex: bool = False, sharey: bool = False) -> tuple[plt.Figure, np.ndarray]:
     """Convenient consistent Matplotlib panel canvas."""
     if nrows < 1 or ncols < 1:
         raise ValueError("nrows and ncols must be positive")
