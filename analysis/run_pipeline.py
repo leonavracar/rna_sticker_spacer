@@ -6,7 +6,7 @@ import argparse
 from dataclasses import dataclass
 from pathlib import Path
 import sys
-from typing import Any, Iterator
+from typing import Any, Iterator, Literal
 
 import numpy as np
 import pandas as pd
@@ -26,6 +26,11 @@ from src.framewise import (
     summarize_numeric,
 )
 from src.mixtures import identify_species, mixture_cluster_rows
+from src.molecule_graph import (
+    build_molecule_contact_edge_dict_from_pairing_npz,
+    build_molecule_intra_contact_dict_from_pairing_npz,
+)
+from src.energy import energy_framewise
 from src.single_chain import mfe_pairs_from_csv, single_chain_framewise
 from src.utils.io import load_params_json
 
@@ -54,7 +59,11 @@ class AnalysisResult:
     extra_tables: dict[str, pd.DataFrame]
 
 
-def archive_path(run_dir: Path, kind: str, stem: str) -> Path:
+def archive_path(
+    run_dir: Path,
+    kind: Literal["pairing", "lookup", "graph", "intramol"],
+    stem: str,
+) -> Path:
     """Resolve the established NPZ and molecule-lookup filenames."""
     base = run_dir / "computed_metrics"
     if kind == "pairing":
@@ -164,11 +173,6 @@ def generate_graphs(
     """Generate molecular-contact archives from particle-pairing archives."""
     if config["experiment"] == "single_chain":
         return
-
-    from src.molecule_graph import (
-        build_molecule_contact_edge_dict_from_pairing_npz,
-        build_molecule_intra_contact_dict_from_pairing_npz,
-    )
 
     want_graph = overwrite or find_archive(paths, "graph") is None
     want_intra = (
@@ -471,8 +475,6 @@ def checkpoint_energy(
     db_path: Path,
 ) -> None:
     """Optional GSD pass; store only late-window energy/Rg averages in SQLite."""
-    from src.energy import energy_framewise
-
     pairing_path, lookup_path = pairing_inputs(paths)
     with np.load(pairing_path) as pairing:
         frames = np.asarray(pairing["frame_indices"], dtype=np.int64)
