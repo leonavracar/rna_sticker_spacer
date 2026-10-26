@@ -10,6 +10,7 @@ Additional physical/conservation assertions guard against tautological checks.
 from __future__ import annotations
 
 import importlib.util
+import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -52,6 +53,23 @@ def _compare_csv_tables(actual: Path, reference: Path) -> pd.DataFrame:
         check_exact=False,
     )
     return actual_df
+
+
+def test_checked_in_mixture_reference_matches_input_composition() -> None:
+    """The numerical reference must describe the actual packaged molecules."""
+    parameters = json.loads((EXAMPLE / "params.json").read_text(encoding="utf-8"))
+    lengths = [len(sequence) for sequence in parameters["sequences"]]
+    assert lengths.count(30) == 235
+    assert lengths.count(141) == 50
+    assert len(lengths) == 285
+    assert sum(lengths) == 14_100
+
+    baseline = pd.read_csv(REFERENCE / "replicates.csv")
+    assert len(baseline) == 1
+    assert baseline.loc[0, "n_molecules"] == len(lengths)
+    assert baseline.loc[0, "n_particles"] == sum(lengths)
+    assert baseline.loc[0, "E_att"] == pytest.approx(parameters["E_att"])
+    assert baseline.loc[0, "density"] == pytest.approx(parameters["density"])
 
 
 @pytest.mark.integration
