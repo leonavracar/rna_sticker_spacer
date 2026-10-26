@@ -26,7 +26,7 @@ def recurrence_from_contact_sets(contact_sets: Iterable[set[tuple[int, int]]]) -
 class RollingRecurrence:
     """Stateful rolling recurrence; the first (window-1) frames are warmup."""
 
-    def __init__(self, window: int = 20):
+    def __init__(self, window: int = 20) -> None:
         if window < 2:
             raise ValueError("recurrence window must be >= 2 frames")
         self.window = window
