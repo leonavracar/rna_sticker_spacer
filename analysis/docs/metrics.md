@@ -1,5 +1,14 @@
 # Analysis metrics and output contracts
 
+> **Scientific reference and historical design notes.** Sections 1–2 record
+> important definitions and original thesis methods; sections 3–6 contain
+> earlier implementation proposals and open questions, **not the current CSV
+> schema**. The maintained pipeline, fixed final-10%-of-sampled-frames
+> convention, and current exported columns are described in the
+> [analysis guide](../README.md). The original thesis windows (20% for
+> single-chain and 5% for mixtures) are retained below as historical context.
+
+
 **Status:** Phase 1 specification, v0.1 — definitions grounded in the MSc thesis; proposed file schemas pending implementation.
 **Sources:** *Biophysical Insights into Repeat-RNA Clustering from Coarse-Grained Molecular Dynamics* (2026), especially Methods `5.3–5.4 (thesis pp. 17–24), results `6.1–6.4 (pp. 25–44), and figures 5–18. Consult `5.1–5.2 for the physical model. See [figures.md](figures.md) for visualization requirements and [phase1_audit.md](phase1_audit.md) for code inventory.
 
