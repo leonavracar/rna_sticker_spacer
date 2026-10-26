@@ -579,9 +579,14 @@ def plot_rg_validation(
     summary: pd.DataFrame, ax: Axes, *, replicates: pd.DataFrame,
     style: PlotStyle, x: str = "E_att", x_order: Sequence | None = None,
     reference_nm: float | None = 1.47,
+    interval: str = "percentiles",
 ) -> Axes:
-    """Plot per-condition Rg means, replicate values and percentile ranges."""
-    require_columns(summary, [x, "Rg_nm_mean", "Rg_nm_p10", "Rg_nm_p90"])
+    """Plot Rg replicate means and between-replicate SD or percentile intervals."""
+    if interval not in ("percentiles", "std"):
+        raise ValueError("interval must be 'percentiles' or 'std'")
+    bounds = (["Rg_nm_std"] if interval == "std"
+              else ["Rg_nm_p10", "Rg_nm_p90"])
+    require_columns(summary, [x, "Rg_nm_mean", *bounds])
     require_columns(replicates, [x, "Rg_nm"])
     strengths, _ = _categorical_axis(summary, x, x_order)
     positions = {value: i for i, value in enumerate(strengths)}
@@ -600,9 +605,14 @@ def plot_rg_validation(
             continue
         row = condition.iloc[0]
         mean = float(row["Rg_nm_mean"])
-        low, high = float(row["Rg_nm_p10"]), float(row["Rg_nm_p90"])
-        ax.vlines(xpos, low, high, color="#9BD1ED", linewidth=6,
-                  alpha=.5, zorder=2)
+        if interval == "std":
+            sd = float(row["Rg_nm_std"])
+            low, high = mean - sd, mean + sd
+        else:
+            low, high = float(row["Rg_nm_p10"]), float(row["Rg_nm_p90"])
+        if np.isfinite(low) and np.isfinite(high):
+            ax.vlines(xpos, low, high, color="#9BD1ED", linewidth=6,
+                      alpha=.5, zorder=2)
         ax.hlines(mean, xpos-.16, xpos+.16, color="black",
                   linewidth=2.3, zorder=4)
         ax.plot(xpos, mean, marker="o", color=palette[strength],
