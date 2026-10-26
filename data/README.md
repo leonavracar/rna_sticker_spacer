@@ -18,9 +18,9 @@ For example:
 The repository does **not** require a second `data/processed/` directory.
 Do not copy sweep CSVs merely to run notebooks. Pass the existing
 `analysis_results/` root to the notebook data-loading functions, or set
-`RNA_ANALYSIS_RESULTS_ROOT` after the loader supports that environment variable.
-Until then, set the notebooks' data-root variable explicitly to the full
-analysis-results path on the HPC system.
+`RNA_ANALYSIS_RESULTS_ROOT` in the notebook's environment. The four curated
+notebooks read that variable, defaulting to `analysis_results/` at the
+repository root. The plotting loader accepts the root directory as an argument.
 
 Production trajectories, SQLite checkpoints and NPZ archives are not
 committed to Git. Small, explicitly curated demonstration data and
