@@ -1,0 +1,11 @@
+# CPU analysis, plotting and notebook dependencies.
+# GSD/freud are optional; see requirements-trajectory.txt.
+numpy>=1.26,<3
+pandas>=2.2,<3
+scipy>=1.11,<2
+matplotlib>=3.8,<4
+seaborn>=0.13,<0.14
+PyYAML>=6.0,<7
+networkx>=3.2,<4
+statsmodels>=0.14,<0.15
+pyvis>=0.3.2,<0.4
