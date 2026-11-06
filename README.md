@@ -8,7 +8,7 @@ The project was developed to investigate how interaction strength, backbone stif
 
 [Simulation source](bulk/) · [Analysis guide](analysis/README.md) · [Scientific metrics](analysis/docs/metrics.md) · [Figure registry](analysis/docs/figures.md) · [Tests](analysis/tests/)
 
-![One-particle-per-nucleotide coarse-grained RNA representation](assets/model.png)
+![One-particle-per-nucleotide coarse-grained RNA representation](assets/plot-light.png)
 
 *Each nucleotide is represented by a single connected bead. The equilibrium bond length is one reduced simulation unit (approximately 0.6 nm in the model's physical mapping).*
 
