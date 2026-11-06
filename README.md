@@ -187,7 +187,7 @@ python -m pytest analysis/tests -q
 python -m pytest analysis/tests/test_integration_mixture.py -m integration -q
 ```
 
-The mixture input trajectory and its expected CSV outputs are kept together under [`analysis/tests/fixtures/mixture/`](analysis/tests/fixtures/mixture/). The integration test exercises GSD → pairing → molecular graphs → SQLite/CSV and verifies both regression outputs and numerical invariants. The tests passed on the research cluster on 26 October 2026 (35 standard tests and one integration test); they should be rerun whenever scientific algorithms or dependencies change.
+The mixture input trajectory and its expected CSV outputs are kept together under [`analysis/tests/fixtures/mixture/`](analysis/tests/fixtures/mixture/). The integration test exercises GSD → pairing → molecular graphs → SQLite/CSV and verifies both regression outputs and numerical invariants.
 
 Reference CSVs are regression baselines, not independent proof of the physical model. The checked-in `analysis/tests/fixtures/` data support testing. Selected production `replicates.csv` and `summary.csv` outputs are tracked under [`analysis_results/`](analysis_results/); full trajectories, caches, and checkpoints stay outside Git.
 
@@ -205,7 +205,6 @@ Reference CSVs are regression baselines, not independent proof of the physical m
 | [`analysis/docs/`](analysis/docs/) | Metric specification and historical thesis-figure registry |
 | [`notebooks/`](notebooks/) | Archived notebook exports / exploratory visualizations |
 
-The maintained workflow is in `analysis/`. Earlier experimental scripts were removed from the active tree; they remain recoverable from Git history. The `notebooks/` directory contains older exported material.
 
 ## References and acknowledgement
 
