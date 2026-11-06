@@ -1,0 +1,6 @@
+--molecule_file cag10x235_cag47x50.json --E_att 2 --density 0.005 --angle_k_ppp 2.5
+--molecule_file cag10x235_cag47x50.json --E_att 2 --density 0.01 --angle_k_ppp 2.5
+--molecule_file cag10x235_cag47x50.json --E_att 4 --density 0.005 --angle_k_ppp 2.5
+--molecule_file cag10x235_cag47x50.json --E_att 4 --density 0.01 --angle_k_ppp 2.5
+--molecule_file cag10x235_cag47x50.json --E_att 8 --density 0.005 --angle_k_ppp 2.5
+--molecule_file cag10x235_cag47x50.json --E_att 8 --density 0.01 --angle_k_ppp 2.5

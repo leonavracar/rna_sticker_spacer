@@ -1,0 +1,15 @@
+--E_att 1 --angle_k_ppp 0 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 1 --angle_k_ppp 2.5 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 1 --angle_k_ppp 5 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 2 --angle_k_ppp 0 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 2 --angle_k_ppp 2.5 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 2 --angle_k_ppp 5 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 3 --angle_k_ppp 0 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 3 --angle_k_ppp 2.5 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 3 --angle_k_ppp 5 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 4 --angle_k_ppp 0 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 4 --angle_k_ppp 2.5 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 4 --angle_k_ppp 5 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 8 --angle_k_ppp 0 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 8 --angle_k_ppp 2.5 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000
+--E_att 8 --angle_k_ppp 5 --density 0.005 --molecule_file duplex.json --N_steps 30000000 --N_write 10000

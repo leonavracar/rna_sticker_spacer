@@ -1,0 +1,10 @@
+experiment: length_patterning
+late_fraction: 0.10
+nm_per_sim_length_unit: 0.6
+min_contacts: 2
+recurrence_window: 20
+cluster_binning: particle_percentage
+r_min: 0.0
+r_max: 0.7
+exclude_chain: 3
+stride: 1

@@ -1,11 +1,18 @@
-from pathlib import Path
-from typing import Any
-import json
+"""Small IO helpers for parameter files, optional trajectories and NPZ arrays."""
+
+from __future__ import annotations
+
+from collections.abc import Sized
 from contextlib import contextmanager
-from typing import Iterator
+import json
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Iterator
+
 import numpy as np
-import gsd.hoomd
 from numpy.typing import NDArray
+
+if TYPE_CHECKING:
+    import gsd.hoomd
 
 @contextmanager
 def as_traj(
@@ -15,6 +22,9 @@ def as_traj(
     Yield a trajectory. If a path is given, the trajectory is opened here and closed on exit.
     """
     if isinstance(traj_file, (str, Path)):
+        # The NPZ-only analyze stage must not need to import GSD.
+        import gsd.hoomd
+
         traj = gsd.hoomd.open(str(traj_file), "r")
         try:
             yield traj
@@ -23,7 +33,6 @@ def as_traj(
     else:
         yield traj_file
 
-# Parameters from params.json
 
 def load_params_json(params_path: Path) -> dict[str, Any]:
     """Load params.json, tolerating extra concatenated JSON after the first object."""
@@ -63,24 +72,22 @@ def get_row_params_from_json(
     row["folder_name"] = run_dir.name
     return row
 
-# npz files
 def save_npz(out_path: Path, data: dict[str, NDArray]) -> None:
-    """
-    Save arrays to a compressed .npz file.
-    """
+    """Write a compressed NPZ archive."""
     out_path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(out_path, **data)
 
 
 def load_npz(cache_path: Path) -> dict[str, NDArray]:
-    """
-    Load arrays from a compressed .npz file.
-    """
+    """Read all arrays from an NPZ archive."""
     with np.load(cache_path) as data:
         return {key: data[key] for key in data.files}
-    
-def get_frames(traj, fraction_last: float = 1.0) -> list[int]:
+
+
+def get_frames(traj: Sized, fraction_last: float = 1.0) -> list[int]:
     """Return indices of the last `fraction_last` of frames (0<f<=1)."""
+    if not 0 < fraction_last <= 1:
+        raise ValueError("fraction_last must lie in (0, 1]")
     n = len(traj)
     start = int(n * (1.0 - fraction_last))
     return list(range(start, n))

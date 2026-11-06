@@ -1,0 +1,32 @@
+name: validation_env
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - python=3.13
+  - pip
+  # Simulation build prerequisites; HOOMD-blue and SQD plugin are built from source.
+  - cuda-cudart
+  - cuda-nvcc
+  - cuda-libraries-dev
+  - cmake
+  - pybind11
+  - git
+  - viennarna
+  - fresnel
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - seaborn
+  - networkx
+  - pyyaml
+  - gsd
+  - freud
+  - jupyterlab
+  - ipykernel
+  - statsmodels
+  - pyvis
+  - pytest

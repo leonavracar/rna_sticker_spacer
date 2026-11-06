@@ -1,0 +1,13 @@
+experiment: single_chain
+late_fraction: 0.10
+min_contacts: 2
+recurrence_window: 20
+r_min: 0.0
+r_max: 0.7
+exclude_chain: 3
+stride: 1
+nm_per_sim_length_unit: 0.6
+rg:
+  alphafold3_reference_nm: 1.47
+viennarna_reference_file: viennarna_reference_pairs.csv
+pair_index_offset: 1

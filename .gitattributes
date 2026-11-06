@@ -1,0 +1,7 @@
+# GitHub Linguist language statistics.
+# Jupyter notebooks are JSON containers that may embed large plot outputs;
+# count maintained Python modules, not notebook outputs, as source code.
+*.ipynb -linguist-detectable
+
+# Exported notebook HTML reports are generated artifacts, not HTML source.
+notebooks/*.html linguist-generated

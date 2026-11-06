@@ -1,41 +1,47 @@
-# Python cache
+# Python, notebooks, and tool caches
 __pycache__/
-*/__pycache__/
-*.pyc
-*.pyo
-
-# Jupyter notebooks and checkpoints
-bulk/troubleshooting/*.ipynb
+*.py[cod]
 .ipynb_checkpoints/
-*/.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# Simulation outputs
-bulk/output_dir/
-bulk/job_output/
-bulk/troubleshooting/
-bulk/pipeline_logs
-# Common large simulation/data files anywhere
-*.gsd
-*.log
-*.sqlite
-*.h5
-*.hdf5
-*.npy
-*.npz
-*.traj
-*.dat
-*.lammpstrj
-*.dcd
-*.xtc
-*.png
-
-
-# Environment / local config
-.env
+# Local environments and system files
 .venv/
 venv/
 conda-env/
-
-# System files
+.env
+.env.*
+!.env.example
 .DS_Store
-analysis_scripts/helper_scripts/nohup.out
+
+# Generated simulation outputs
+/bulk/output_dir/
+/bulk/job_output/
+/bulk/pipeline_logs/
+/bulk/troubleshooting/
+
+# Exclude generated sweep outputs, except explicitly curated tables/figures
+/analysis_results/*
+!/analysis_results/*/
+/analysis_results/*/*
+!/analysis_results/*/replicates.csv
+!/analysis_results/*/summary.csv
+!/analysis_results/*/figures/
+/analysis_results/*/figures/*
+!/analysis_results/*/figures/*.png
+!/analysis_results/*/figures/*.pdf
+
+# Large/generated binary data and checkpoints
+*.gsd
+*.npy
+*.npz
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# Small checked-in GSD regression fixture
+!/analysis/tests/fixtures/mixture/input/trajectory_0.gsd
