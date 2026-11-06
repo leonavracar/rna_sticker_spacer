@@ -4,7 +4,7 @@
 
 This research code implements a one-bead-per-nucleotide RNA model in [HOOMD-blue](https://github.com/glotzerlab/hoomd-blue), with sequence-specific, valency-limited Watson–Crick interactions. It also provides a Python analysis pipeline for transforming simulation trajectories into base-pair contacts, molecular networks, cluster statistics, and publication-ready figures.
 
-The project was developed to investigate how interaction strength, backbone stiffness, repeat length, and RNA composition affect self-assembly. This repository exposes both the **simulation implementation** and the **analysis workflow**; it is not intended as a substitute for the full scientific thesis.
+The project was developed to investigate how interaction strength, backbone stiffness, repeat length, and RNA composition affect RNA clustering. I also wrote my [MSc thesis](assets/thesis.pdf) based on this work.
 
 [Simulation source](bulk/) · [Analysis guide](analysis/README.md) · [Scientific metrics](analysis/docs/metrics.md) · [Figure registry](analysis/docs/figures.md) · [Tests](analysis/tests/)
 
