@@ -212,5 +212,3 @@ The maintained workflow is in `analysis/`. Earlier experimental scripts were rem
 **Valency-limited soft-core interactions:** Dmitriev, V., Gupta, A. & Goloborodko, A. (2026). *Valency-bounding correction potential for coarse-grained molecular dynamics simulations*. arXiv:2609.07842. [Paper](https://arxiv.org/abs/2609.07842) · [DOI](https://doi.org/10.48550/arXiv.2609.07842) · [Plugin repository cited in the paper](https://github.com/glab-vbc/vbc_plugin).
 
 **Simulation engine:** [HOOMD-blue](https://github.com/glotzerlab/hoomd-blue). **Trajectory analysis:** [GSD](https://github.com/glotzerlab/gsd) and [freud](https://github.com/glotzerlab/freud). **RNA structure references:** [ViennaRNA](https://www.tbi.univie.ac.at/RNA/).
-
-The SQD/VBC interaction implementation is an external research dependency, currently not publicly accessible, and should be cited separately from this repository's RNA modelling, experiment setup, and analysis code.
